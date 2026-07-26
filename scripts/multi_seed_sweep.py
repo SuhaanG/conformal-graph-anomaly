@@ -38,13 +38,14 @@ import argparse
 import csv
 import numpy as np
 import torch
+from scipy import stats
 
 from conformal_fdr import run_single_trial
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_seeds", type=int, default=10)
+    parser.add_argument("--n_seeds", type=int, default=50)
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None,
@@ -106,6 +107,60 @@ def main():
     print("\nInterpretation reminder: compare mean realized_fdr per condition "
           f"against nominal alpha={args.alpha}. See module docstring for what "
           "each outcome pattern means for H1 vs H4.")
+
+    # ------------------------------------------------------------------
+    # Statistical tests (this is what actually answers H1 vs H4, not eyeballing means)
+    # ------------------------------------------------------------------
+    print("\n=== Statistical tests ===")
+
+    clean_subset = [r for r in all_results if r["condition"] == "clean"]
+    contam_subset = [r for r in all_results if r["condition"] == "contaminated"]
+
+    if clean_subset and contam_subset:
+        clean_by_seed = {r["seed"]: r["realized_fdr"] for r in clean_subset}
+        contam_by_seed = {r["seed"]: r["realized_fdr"] for r in contam_subset}
+        common_seeds = sorted(set(clean_by_seed) & set(contam_by_seed))
+
+        if len(common_seeds) >= 5:
+            clean_paired = np.array([clean_by_seed[s] for s in common_seeds])
+            contam_paired = np.array([contam_by_seed[s] for s in common_seeds])
+
+            # Paired test: is contaminated FDR different from clean FDR, seed-for-seed?
+            # Both conditions share the same underlying graph per seed (only the
+            # calibration selection differs), so pairing by seed is valid and
+            # more powerful than an unpaired comparison.
+            try:
+                wilcoxon_stat, wilcoxon_p = stats.wilcoxon(contam_paired, clean_paired)
+                print(f"Paired Wilcoxon (contaminated vs. clean, n={len(common_seeds)} paired seeds): "
+                      f"stat={wilcoxon_stat:.3f}, p={wilcoxon_p:.4f}")
+            except ValueError as e:
+                print(f"Paired Wilcoxon could not be computed: {e}")
+
+            paired_ttest = stats.ttest_rel(contam_paired, clean_paired)
+            print(f"Paired t-test (contaminated vs. clean): "
+                  f"t={paired_ttest.statistic:.3f}, p={paired_ttest.pvalue:.4f}")
+
+        # One-sided test: is mean realized FDR significantly ABOVE nominal alpha?
+        # This is the literal H1 claim for each condition individually.
+        for name, subset in [("clean", clean_subset), ("contaminated", contam_subset)]:
+            fdrs = np.array([r["realized_fdr"] for r in subset])
+            if len(fdrs) >= 5 and fdrs.std() > 0:
+                t_stat, p_two_sided = stats.ttest_1samp(fdrs, args.alpha)
+                # convert to one-sided p-value (testing mean > alpha)
+                p_one_sided = p_two_sided / 2 if t_stat > 0 else 1 - p_two_sided / 2
+                verdict = "SIGNIFICANTLY ABOVE nominal" if p_one_sided < 0.05 else "not significantly above nominal"
+                print(f"One-sided test ({name} FDR > alpha={args.alpha}): "
+                      f"mean={fdrs.mean():.3f}, t={t_stat:.3f}, p={p_one_sided:.4f} -> {verdict}")
+            else:
+                print(f"One-sided test ({name}): insufficient variance or sample size to test")
+
+        print("\nReading guide: paired test p < 0.05 means the two conditions "
+              "differ significantly for the SAME underlying graphs. One-sided "
+              "test p < 0.05 for 'contaminated' (with clean NOT significant) "
+              "is the strongest form of H1 support. Both non-significant "
+              "supports H4 (fail-safe property survives on graphs).")
+    else:
+        print("Insufficient data in one or both conditions to run statistical tests.")
 
 
 if __name__ == "__main__":
