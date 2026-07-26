@@ -87,7 +87,7 @@ def run_single_trial(
     assert contamination_condition in ("clean", "contaminated")
 
     cfg = GraphGenConfig(
-        n_nodes=15000, p_aa=0.3, p_an=0.01, p_nn=0.005,
+        n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
     )
     gen = ContaminatedGraphGenerator(cfg)
