@@ -65,11 +65,19 @@ def load_amazon_fraud_graph():
 
     features = hetero_graph.ndata["feature"].numpy()
     labels = hetero_graph.ndata["label"].numpy()
-    # DGL fraud datasets use label=1 for fraud, label=0 for benign, and some
-    # nodes are unlabeled (-1) in the semi-supervised split; treat unlabeled
-    # as normal (0) here since we only need a binary anomaly/normal split
-    # for calibration purposes.
     labels = np.where(labels == 1, 1, 0)
+
+    # CRITICAL: standardize features (zero mean, unit variance per dimension).
+    # Our synthetic data was generated as clean unit-variance Gaussians, so this
+    # was implicitly true there. Real DGL fraud-dataset features are raw and
+    # unnormalized -- without this, reconstruction error is dominated by
+    # high-magnitude feature dimensions (e.g. very active accounts) rather than
+    # actual anomalousness, which can invert the anomaly signal entirely
+    # (observed: AUROC=0.28, worse than random, before this fix).
+    feat_mean = features.mean(axis=0, keepdims=True)
+    feat_std = features.std(axis=0, keepdims=True)
+    feat_std[feat_std == 0] = 1.0  # avoid div-by-zero for constant columns
+    features = (features - feat_mean) / feat_std
 
     return G, features, labels
 
