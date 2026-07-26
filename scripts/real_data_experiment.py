@@ -103,16 +103,28 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     if len(clean_pool) < 20:
         return None
 
-    n_calib = int(round(calib_frac * len(clean_pool)))
-
+    # IMPORTANT ASYMMETRY, DELIBERATE: this real graph is dense (avg degree
+    # ~740), so the true zero-exposure "clean" pool is small (~267 of ~11123
+    # normal nodes) no matter how it's sampled -- that's a property of the
+    # data, not a bug. Forcing all three conditions to match that small size
+    # would make the test set so large relative to calibration that BH could
+    # never reject anything regardless of detector quality (verified: with
+    # n_calib~107, BH needs ~1013 tied-minimal-p-value test points to reject
+    # even one hypothesis, more than the entire fraud count in this dataset).
+    # So "clean" uses everything available in its natural pool; "contaminated"
+    # and "adversarial" are NOT limited by that pool and use a properly
+    # powered calibration size instead.
     if contamination_condition == "clean":
-        calib_idx = rng.choice(clean_pool, size=min(n_calib, len(clean_pool)), replace=False)
-    elif contamination_condition == "contaminated":
-        calib_idx = rng.choice(normal_idx, size=min(n_calib, len(normal_idx)), replace=False)
-    else:  # adversarial
-        order = np.argsort(-exposure)
-        top_exposed = normal_idx[order]
-        calib_idx = top_exposed[:n_calib]
+        n_calib = len(clean_pool)
+        calib_idx = clean_pool
+    else:
+        n_calib = min(2000, len(normal_idx))
+        if contamination_condition == "contaminated":
+            calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
+        else:  # adversarial
+            order = np.argsort(-exposure)
+            top_exposed = normal_idx[order]
+            calib_idx = top_exposed[:n_calib]
 
     remaining_normal = np.setdiff1d(normal_idx, calib_idx)
     test_idx = np.concatenate([remaining_normal, anomaly_idx])
