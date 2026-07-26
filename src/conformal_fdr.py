@@ -1,167 +1,177 @@
 """
-multi_seed_sweep.py
+conformal_fdr.py
 
-Step 5: the actual H1-vs-H4 test. Runs run_single_trial() from
-conformal_fdr.py across many seeds for both the "clean" and "contaminated"
-calibration conditions, then compares the DISTRIBUTION of realized FDR to
-the nominal alpha level.
+Step 4: the core experiment. Tests H1 (does clustered, propagating
+contamination break finite-sample FDR control?) against H4 (does the
+fail-safe property survive on graphs?).
 
-This is the first script in the project that needs real compute (n_seeds x
-2 conditions x 100 epochs of GNN training each) and is designed to run on
-Google Colab with an A100. It will also run on a local M2 CPU for a quick
-smaller-scale check (use --n_seeds 3 for that).
+Pipeline:
+1. Train the DOMINANT detector on the full graph (transductive — standard
+   for GNN conformal prediction, and what makes the exchangeability argument
+   from the literature audit apply at all).
+2. Split NORMAL nodes into a calibration set and a test set. Anomalous nodes
+   are never in calibration (semi-supervised novelty detection setup, same
+   as AdaDetect / Bates et al.) — but we test two calibration conditions:
+     - "clean" calibration: calibration nodes drawn only from the region with
+       zero anomalous neighbors (the isolated-control group from Step 2).
+     - "contaminated" calibration: calibration nodes drawn from anywhere,
+       including nodes with high anomalous-neighbor exposure.
+3. Compute conformal p-values for test nodes (mix of normal + anomalous)
+   using the calibration scores.
+4. Apply Benjamini-Hochberg at nominal FDR level alpha to get a discovery set.
+5. Measure REALIZED FDR against ground truth labels.
+6. Repeat across many seeds to get a distribution, not a single point estimate
+   — single-run FDR numbers are exactly the kind of unstable result this
+   whole project exists to interrogate.
 
-Interpretation guide (this is the actual research question):
-- If mean realized FDR for "contaminated" is well above alpha, and "clean"
-  stays at or below alpha -> H1 supported: clustered, propagating
-  contamination breaks finite-sample FDR control on graphs.
-- If both stay at or below alpha -> H4 supported: the fail-safe property
-  survives graph structure; the paper becomes a certification result instead.
-- If "clean" is ALSO consistently above alpha, or has zero discoveries in a
-  way that looks like a distribution-mismatch artifact rather than validity
-  -> the experimental design itself needs revision before either conclusion
-  is trustworthy (see the note in conformal_fdr.py's smoke test about the
-  clean condition's small calibration pool).
-
-Usage (local quick check):
-  python3 scripts/multi_seed_sweep.py --n_seeds 5 --alpha 0.10
-
-Usage (Colab, full run):
-  python3 scripts/multi_seed_sweep.py --n_seeds 30 --alpha 0.10 --device cuda
+This is deliberately kept as simple, standard conformal-FDR machinery
+(Bates et al. / AdaDetect style p-values + BH) so that if something breaks,
+it's attributable to the contamination condition, not to a nonstandard or
+buggy conformal implementation.
 """
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-import argparse
-import csv
 import numpy as np
-import torch
-from scipy import stats
 
-from conformal_fdr import run_single_trial
+from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
+from detector import train_dominant
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--n_seeds", type=int, default=50)
-    parser.add_argument("--alpha", type=float, default=0.10)
-    parser.add_argument("--n_epochs", type=int, default=100)
-    parser.add_argument("--device", type=str, default=None,
-                         help="cpu, cuda, or mps. Auto-detected if not set.")
-    args = parser.parse_args()
+def conformal_p_values(calib_scores: np.ndarray, test_scores: np.ndarray) -> np.ndarray:
+    """Standard conformal p-value: for each test score, the fraction of
+    calibration scores that are >= it (plus a randomized tie-break term,
+    plus the +1 correction for finite-sample validity), following
+    Bates et al. (2023) / the standard split-conformal outlier-testing recipe.
 
-    if args.device is None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
-    else:
-        device = args.device
-    print(f"Using device: {device}\n")
+    Higher anomaly score = more anomalous, so we test whether the test score
+    is unusually LARGE relative to calibration (one-sided, upper tail).
+    """
+    n_calib = len(calib_scores)
+    p_values = np.zeros(len(test_scores))
+    for i, s in enumerate(test_scores):
+        # count calibration scores >= test score (conservative direction)
+        count_ge = np.sum(calib_scores >= s)
+        p_values[i] = (count_ge + 1) / (n_calib + 1)
+    return p_values
 
-    all_results = []
-    for condition in ["clean", "contaminated"]:
-        print(f"=== Running {args.n_seeds} seeds for condition: {condition} ===")
-        for seed in range(args.n_seeds):
-            result = run_single_trial(
-                condition, alpha=args.alpha, seed=seed,
-                n_epochs=args.n_epochs, device=device,
-            )
-            if result is None:
-                print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
-                continue
-            all_results.append(result)
-            print(f"  seed {seed}: n_discoveries={result['n_discoveries']:3d} "
-                  f"realized_fdr={result['realized_fdr']:.3f} power={result['power']:.3f}")
 
-    # Save raw results
-    out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
-    os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, "multi_seed_sweep.csv")
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(all_results[0].keys()))
-        writer.writeheader()
-        writer.writerows(all_results)
-    print(f"\nSaved raw results to {csv_path}")
+def benjamini_hochberg(p_values: np.ndarray, alpha: float) -> np.ndarray:
+    """Returns a boolean mask of rejected (discovered) hypotheses at level alpha."""
+    n = len(p_values)
+    order = np.argsort(p_values)
+    sorted_p = p_values[order]
+    thresholds = alpha * (np.arange(1, n + 1) / n)
+    below = sorted_p <= thresholds
+    if not np.any(below):
+        return np.zeros(n, dtype=bool)
+    max_idx = np.max(np.where(below)[0])
+    reject_sorted = np.zeros(n, dtype=bool)
+    reject_sorted[: max_idx + 1] = True
+    reject = np.zeros(n, dtype=bool)
+    reject[order] = reject_sorted
+    return reject
 
-    # Summarize
-    print("\n=== Summary (mean +/- std across seeds) ===")
-    for condition in ["clean", "contaminated"]:
-        subset = [r for r in all_results if r["condition"] == condition]
-        if not subset:
-            print(f"{condition}: no valid trials")
+
+def run_single_trial(
+    contamination_condition: str,  # "clean" or "contaminated"
+    alpha: float = 0.10,
+    seed: int = 0,
+    n_epochs: int = 100,
+    calib_frac: float = 0.4,
+    device: str = "cpu",
+    score_alpha: float = 0.5,  # weight on attribute vs structure loss in the detector
+):
+    assert contamination_condition in ("clean", "contaminated", "adversarial")
+
+    cfg = GraphGenConfig(
+        n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
+        feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
+    )
+    gen = ContaminatedGraphGenerator(cfg)
+    graph, features, labels = gen.generate()
+
+    scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed, verbose=False, device=device, alpha=score_alpha)
+
+    normal_idx = np.where(labels == 0)[0]
+    anomaly_idx = np.where(labels == 1)[0]
+
+    # compute anomalous-neighbor exposure for normal nodes (same metric as Step 2)
+    exposure = np.zeros(len(normal_idx))
+    for j, i in enumerate(normal_idx):
+        neighbors = list(graph.neighbors(i))
+        if len(neighbors) == 0:
             continue
-        fdrs = np.array([r["realized_fdr"] for r in subset])
-        powers = np.array([r["power"] for r in subset])
-        n_zero_discovery = sum(1 for r in subset if r["n_discoveries"] == 0)
-        print(f"{condition}: "
-              f"realized_fdr = {fdrs.mean():.3f} +/- {fdrs.std():.3f} "
-              f"(nominal alpha = {args.alpha}), "
-              f"power = {powers.mean():.3f} +/- {powers.std():.3f}, "
-              f"zero-discovery trials = {n_zero_discovery}/{len(subset)}")
+        exposure[j] = sum(1 for n in neighbors if labels[n] == 1) / len(neighbors)
 
-    print("\nInterpretation reminder: compare mean realized_fdr per condition "
-          f"against nominal alpha={args.alpha}. See module docstring for what "
-          "each outcome pattern means for H1 vs H4.")
+    rng = np.random.default_rng(seed)
 
-    # ------------------------------------------------------------------
-    # Statistical tests (this is what actually answers H1 vs H4, not eyeballing means)
-    # ------------------------------------------------------------------
-    print("\n=== Statistical tests ===")
+    # Hold calibration SET SIZE constant across conditions. Otherwise a smaller
+    # clean-calibration pool produces coarser conformal p-values (minimum
+    # possible p-value is 1/(n_calib+1)), which alone could suppress
+    # discoveries regardless of contamination -- a confound unrelated to H1.
+    clean_pool = normal_idx[exposure == 0]
+    n_calib_fixed = int(round(calib_frac * len(clean_pool)))  # bottleneck = smaller pool
 
-    clean_subset = [r for r in all_results if r["condition"] == "clean"]
-    contam_subset = [r for r in all_results if r["condition"] == "contaminated"]
+    if len(clean_pool) < 20:
+        return None  # not enough clean nodes to calibrate on at this seed — skip
 
-    if clean_subset and contam_subset:
-        clean_by_seed = {r["seed"]: r["realized_fdr"] for r in clean_subset}
-        contam_by_seed = {r["seed"]: r["realized_fdr"] for r in contam_subset}
-        common_seeds = sorted(set(clean_by_seed) & set(contam_by_seed))
+    n_calib = n_calib_fixed
 
-        if len(common_seeds) >= 5:
-            clean_paired = np.array([clean_by_seed[s] for s in common_seeds])
-            contam_paired = np.array([contam_by_seed[s] for s in common_seeds])
+    if contamination_condition == "clean":
+        eligible_calib_pool = clean_pool
+        calib_idx = rng.choice(eligible_calib_pool, size=n_calib, replace=False)
+    elif contamination_condition == "contaminated":
+        eligible_calib_pool = normal_idx  # anywhere, including exposed nodes
+        calib_idx = rng.choice(eligible_calib_pool, size=n_calib, replace=False)
+    else:  # adversarial: worst case -- deliberately calibrate on the MOST exposed
+        # normal nodes available, not a random mix. This is the stronger, more
+        # credible test of the fail-safe property: random exposure averages out
+        # a lot of the contamination signal, but a paper claiming the guarantee
+        # survives contamination needs to survive the adversarial case too.
+        order_by_exposure = np.argsort(-exposure)  # descending
+        top_exposed = normal_idx[order_by_exposure]
+        calib_idx = top_exposed[:n_calib]
 
-            # Paired test: is contaminated FDR different from clean FDR, seed-for-seed?
-            # Both conditions share the same underlying graph per seed (only the
-            # calibration selection differs), so pairing by seed is valid and
-            # more powerful than an unpaired comparison.
-            try:
-                wilcoxon_stat, wilcoxon_p = stats.wilcoxon(contam_paired, clean_paired)
-                print(f"Paired Wilcoxon (contaminated vs. clean, n={len(common_seeds)} paired seeds): "
-                      f"stat={wilcoxon_stat:.3f}, p={wilcoxon_p:.4f}")
-            except ValueError as e:
-                print(f"Paired Wilcoxon could not be computed: {e}")
+    # test set: remaining normal nodes (not used for calibration) + all anomalies
+    remaining_normal = np.setdiff1d(normal_idx, calib_idx)
+    test_idx = np.concatenate([remaining_normal, anomaly_idx])
+    test_labels = np.concatenate([
+        np.zeros(len(remaining_normal), dtype=int),
+        np.ones(len(anomaly_idx), dtype=int),
+    ])
 
-            paired_ttest = stats.ttest_rel(contam_paired, clean_paired)
-            print(f"Paired t-test (contaminated vs. clean): "
-                  f"t={paired_ttest.statistic:.3f}, p={paired_ttest.pvalue:.4f}")
+    calib_scores = scores[calib_idx]
+    test_scores = scores[test_idx]
 
-        # One-sided test: is mean realized FDR significantly ABOVE nominal alpha?
-        # This is the literal H1 claim for each condition individually.
-        for name, subset in [("clean", clean_subset), ("contaminated", contam_subset)]:
-            fdrs = np.array([r["realized_fdr"] for r in subset])
-            if len(fdrs) >= 5 and fdrs.std() > 0:
-                t_stat, p_two_sided = stats.ttest_1samp(fdrs, args.alpha)
-                # convert to one-sided p-value (testing mean > alpha)
-                p_one_sided = p_two_sided / 2 if t_stat > 0 else 1 - p_two_sided / 2
-                verdict = "SIGNIFICANTLY ABOVE nominal" if p_one_sided < 0.05 else "not significantly above nominal"
-                print(f"One-sided test ({name} FDR > alpha={args.alpha}): "
-                      f"mean={fdrs.mean():.3f}, t={t_stat:.3f}, p={p_one_sided:.4f} -> {verdict}")
-            else:
-                print(f"One-sided test ({name}): insufficient variance or sample size to test")
+    p_values = conformal_p_values(calib_scores, test_scores)
+    discoveries = benjamini_hochberg(p_values, alpha)
 
-        print("\nReading guide: paired test p < 0.05 means the two conditions "
-              "differ significantly for the SAME underlying graphs. One-sided "
-              "test p < 0.05 for 'contaminated' (with clean NOT significant) "
-              "is the strongest form of H1 support. Both non-significant "
-              "supports H4 (fail-safe property survives on graphs).")
+    n_discoveries = discoveries.sum()
+    if n_discoveries == 0:
+        realized_fdr = 0.0
     else:
-        print("Insufficient data in one or both conditions to run statistical tests.")
+        false_discoveries = np.sum(discoveries & (test_labels == 0))
+        realized_fdr = false_discoveries / n_discoveries
+
+    n_true_anomalies_found = np.sum(discoveries & (test_labels == 1))
+    power = n_true_anomalies_found / len(anomaly_idx) if len(anomaly_idx) > 0 else 0.0
+
+    return {
+        "condition": contamination_condition,
+        "seed": seed,
+        "alpha": alpha,
+        "n_calib": n_calib,
+        "n_discoveries": int(n_discoveries),
+        "realized_fdr": realized_fdr,
+        "power": power,
+    }
 
 
 if __name__ == "__main__":
-    main()
+    print("Running single-trial smoke test for all three conditions (seed=0)...\n")
+    for condition in ["clean", "contaminated", "adversarial"]:
+        result = run_single_trial(condition, seed=0)
+        print(f"[{condition}] {result}")
