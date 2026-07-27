@@ -97,7 +97,8 @@ def degree_normalize_scores(graph, scores):
 
 
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
-                         n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True):
+                         n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
+                         trim_pct=0.01):
     scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
                                 verbose=False, device=device, alpha=score_alpha)
 
@@ -115,7 +116,23 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
         exposure[j] = sum(1 for n in neighbors if labels[n] == 1) / len(neighbors)
 
     rng = np.random.default_rng(seed)
-    clean_pool = normal_idx[exposure == 0]
+
+    # TRIM: exclude the most extreme-scoring normal nodes from calibration
+    # ELIGIBILITY (not from the graph or test set -- they're still tested,
+    # just never allowed into calibration). Diagnostic showed degree
+    # normalization alone still leaves at least one residual outlier normal
+    # node whose score exceeds every true anomaly's score; a single such
+    # node in calibration blocks all discoveries, since conformal p-values
+    # require beating nearly the whole calibration set. Trimming the top
+    # trim_pct of normal scores from calibration eligibility is a standard
+    # robust-statistics correction for this.
+    normal_scores_all = scores[normal_idx]
+    score_cutoff = np.percentile(normal_scores_all, 100 * (1 - trim_pct))
+    eligible_normal_idx = normal_idx[normal_scores_all <= score_cutoff]
+
+    # exposure and clean_pool computed only over calibration-ELIGIBLE nodes
+    eligible_mask = np.isin(normal_idx, eligible_normal_idx)
+    clean_pool = normal_idx[(exposure == 0) & eligible_mask]
 
     if len(clean_pool) < 20:
         return None
@@ -135,12 +152,13 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
         n_calib = len(clean_pool)
         calib_idx = clean_pool
     else:
-        n_calib = min(2000, len(normal_idx))
+        n_calib = min(2000, len(eligible_normal_idx))
         if contamination_condition == "contaminated":
-            calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
-        else:  # adversarial
-            order = np.argsort(-exposure)
-            top_exposed = normal_idx[order]
+            calib_idx = rng.choice(eligible_normal_idx, size=n_calib, replace=False)
+        else:  # adversarial: worst case WITHIN the trimmed eligible pool
+            eligible_exposure = exposure[eligible_mask]
+            order = np.argsort(-eligible_exposure)
+            top_exposed = eligible_normal_idx[order]
             calib_idx = top_exposed[:n_calib]
 
     remaining_normal = np.setdiff1d(normal_idx, calib_idx)
