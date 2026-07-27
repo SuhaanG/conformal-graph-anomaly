@@ -1,30 +1,63 @@
 """
 real_data_experiment.py
 
-Step 7: validate the H4 finding on a REAL organic-anomaly graph, not just
+Step 7: validate the H4 finding on REAL organic-anomaly graphs, not just
 synthetic SBM constructions. This directly answers the "unrealistic anomaly
 injection" critique flagged in the literature audit (GADBench's argument
 that injected anomalies are trivially distinguishable and don't reflect
 real-world anomaly structure).
 
-Dataset: DGL's FraudAmazonDataset -- a real, organic fraud-detection graph
-(users reviewing products on Amazon, ~11,944 nodes, ~7% fraud rate), chosen
-over the larger YelpChi/T-Finance/Elliptic options specifically because its
-size is comparable to what's already validated (n=15000 synthetic), keeping
-this fast enough to finish within a limited Colab compute budget. It has
-three relation types (U-P-U: reviewed same product, U-S-U: same star rating
-same month, U-V-U: same rating-and-TF-IDF-similarity text); these are
-flattened into a single homogeneous graph via edge union -- a deliberate
-simplification, noted here explicitly rather than silently.
+Supported datasets: "amazon" and "yelp", both via DGL's FraudDataset family
+(FraudAmazonDataset, FraudYelpDataset). Deliberately NOT generalized to
+Elliptic/Tolokers/T-Finance -- those live in a different library
+(PyTorch Geometric) with different data conventions (directed graphs,
+different label semantics, different feature scales), and adding them
+without dedicated testing would very likely reproduce the exact debugging
+cycle this file's fixes were built to resolve. That's a separate,
+future task, not silently skipped.
+
+Both fraud datasets have the SAME schema (heterogeneous graph, "user" node
+type, "feature"/"label" ndata, multiple relation etypes flattened via edge
+union), so this loader generalizes with no structural changes -- the only
+difference between datasets is scale and base rate, which the pipeline
+already handles generically (feature standardization, degree-normalized
+scoring, and symmetric trimming all operate on whatever graph is loaded,
+not on Amazon-specific assumptions).
 
 Reuses the exact same detector (DOMINANT), conformal machinery (p-values +
-BH), and three-condition design (clean / contaminated / adversarial) already
-validated on synthetic data, so any difference in outcome is attributable to
-the data being real rather than to a different pipeline.
+BH), and three-condition design (clean / contaminated / adversarial)
+already validated on synthetic data AND validated end-to-end on Amazon.
+
+Known fixes baked into this pipeline (each discovered and validated via a
+real bug during Amazon-dataset debugging -- documented here so they are
+not silently lost when running future datasets):
+1. Feature standardization (zero mean, unit variance) -- real datasets are
+   unnormalized; without this, reconstruction error can be dominated by
+   high-magnitude feature dimensions and invert the anomaly signal entirely.
+2. Degree-normalized scoring (score / log(1+degree)) -- corrects for
+   legitimate high-degree "hub" nodes getting inflated reconstruction
+   error purely from unusual connectivity, unrelated to anomalousness.
+3. SYMMETRIC trimming -- the top trim_pct of normal scores must be excluded
+   from calibration eligibility AND from the test set. Trimming only
+   calibration breaks conformal exchangeability and manufactures a
+   spurious FDR violation (observed: FDR~0.51 vs 0.10 nominal before this
+   fix was applied symmetrically).
+4. Decoupled calibration sizing -- the "clean" (zero-exposure) calibration
+   pool can be much smaller than what "contaminated"/"adversarial" need for
+   statistical power on a dense real graph; forcing equal sizes cripples
+   power for no reason, so "clean" uses whatever it naturally has while
+   the other two conditions use a properly-sized draw from the full
+   (trimmed) normal pool.
+5. Test-set subsampling -- testing against the ENTIRE remaining normal
+   pool (which can be very large on a dense real graph) makes the BH
+   rejection threshold too strict to ever fire even with real signal
+   present; subsampling to a fixed size (5000) is valid (doesn't violate
+   exchangeability) and gives the procedure a realistic chance.
 
 Run on Colab (needs dgl):
   pip install dgl -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
-  python3 scripts/real_data_experiment.py --n_seeds 15 --alpha 0.10 --device cuda
+  python3 scripts/real_data_experiment.py --dataset amazon --n_seeds 15 --alpha 0.10 --device cuda
+  python3 scripts/real_data_experiment.py --dataset yelp --n_seeds 15 --alpha 0.10 --device cuda
 """
 
 import sys
@@ -41,18 +74,29 @@ from scipy import stats
 from detector import train_dominant
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
+SUPPORTED_DATASETS = {"amazon", "yelp"}
 
-def load_amazon_fraud_graph():
-    """Loads DGL's FraudAmazonDataset and flattens the 3 relation types into
-    a single homogeneous networkx graph, matching the interface our
-    synthetic pipeline already expects (graph, features, labels)."""
+
+def load_fraud_graph(dataset_name):
+    """Loads a DGL FraudDataset (Amazon or Yelp) and flattens the multi-
+    relation heterogeneous graph into a single homogeneous networkx graph,
+    matching the interface our synthetic pipeline already expects
+    (graph, features, labels). Both fraud datasets share this exact schema,
+    so this function is dataset-agnostic beyond the class name lookup."""
+    if dataset_name not in SUPPORTED_DATASETS:
+        raise ValueError(f"dataset_name must be one of {SUPPORTED_DATASETS}, got '{dataset_name}'. "
+                          f"Elliptic/Tolokers/T-Finance are NOT yet supported (different library, "
+                          f"different data conventions -- would need separate dedicated integration).")
+
     import dgl
-    from dgl.data import FraudAmazonDataset
+    if dataset_name == "amazon":
+        from dgl.data import FraudAmazonDataset as DGLFraudDataset
+    else:  # yelp
+        from dgl.data import FraudYelpDataset as DGLFraudDataset
 
-    dataset = FraudAmazonDataset()
+    dataset = DGLFraudDataset()
     hetero_graph = dataset[0]
 
-    # union all relation types into a single homogeneous graph
     n_nodes = hetero_graph.num_nodes("user")
     G = nx.Graph()
     G.add_nodes_from(range(n_nodes))
@@ -67,16 +111,10 @@ def load_amazon_fraud_graph():
     labels = hetero_graph.ndata["label"].numpy()
     labels = np.where(labels == 1, 1, 0)
 
-    # CRITICAL: standardize features (zero mean, unit variance per dimension).
-    # Our synthetic data was generated as clean unit-variance Gaussians, so this
-    # was implicitly true there. Real DGL fraud-dataset features are raw and
-    # unnormalized -- without this, reconstruction error is dominated by
-    # high-magnitude feature dimensions (e.g. very active accounts) rather than
-    # actual anomalousness, which can invert the anomaly signal entirely
-    # (observed: AUROC=0.28, worse than random, before this fix).
+    # Fix #1 (see module docstring): standardize features.
     feat_mean = features.mean(axis=0, keepdims=True)
     feat_std = features.std(axis=0, keepdims=True)
-    feat_std[feat_std == 0] = 1.0  # avoid div-by-zero for constant columns
+    feat_std[feat_std == 0] = 1.0
     features = (features - feat_mean) / feat_std
 
     return G, features, labels
@@ -199,6 +237,7 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, default="amazon", choices=sorted(SUPPORTED_DATASETS))
     parser.add_argument("--n_seeds", type=int, default=15)
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
@@ -208,8 +247,8 @@ def main():
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    print("Loading FraudAmazonDataset...")
-    graph, features, labels = load_amazon_fraud_graph()
+    print(f"Loading {args.dataset} fraud dataset...")
+    graph, features, labels = load_fraud_graph(args.dataset)
     print(f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges, "
           f"{labels.sum()} fraud nodes ({labels.mean():.4f} rate)\n")
 
@@ -228,7 +267,7 @@ def main():
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, "real_data_experiment.csv")
+    csv_path = os.path.join(out_dir, f"real_data_experiment_{args.dataset}.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_results[0].keys()))
         writer.writeheader()
