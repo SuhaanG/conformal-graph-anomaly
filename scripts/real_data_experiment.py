@@ -16,13 +16,13 @@ without dedicated testing would very likely reproduce the exact debugging
 cycle this file's fixes were built to resolve. That's a separate,
 future task, not silently skipped.
 
-Both fraud datasets have the SAME schema (heterogeneous graph, "user" node
-type, "feature"/"label" ndata, multiple relation etypes flattened via edge
-union), so this loader generalizes with no structural changes -- the only
-difference between datasets is scale and base rate, which the pipeline
-already handles generically (feature standardization, degree-normalized
-scoring, and symmetric trimming all operate on whatever graph is loaded,
-not on Amazon-specific assumptions).
+Both fraud datasets share the same ndata schema ("feature"/"label", multiple
+relation etypes flattened via edge union) but NOT the same node type name --
+Amazon models fraud at the user level (ntype "user"), Yelp at the review
+level (ntype "review"). This is handled via NODE_TYPE_BY_DATASET below;
+this correction was made after the first real Yelp run failed with
+"Node type 'user' does not exist" -- an unverified assumption in the
+original generalization, now fixed and mapped per-dataset explicitly.
 
 Reuses the exact same detector (DOMINANT), conformal machinery (p-values +
 BH), and three-condition design (clean / contaminated / adversarial)
@@ -76,6 +76,14 @@ from conformal_fdr import conformal_p_values, benjamini_hochberg
 
 SUPPORTED_DATASETS = {"amazon", "yelp"}
 
+# CORRECTION: Amazon and Yelp do NOT share an identical node-type name, despite
+# both being DGL FraudDataset variants with the same ndata schema otherwise.
+# Amazon models fraud at the USER level (ntype "user"); Yelp models fraud at
+# the REVIEW level (ntype "review"), confirmed via DGL's official docs. This
+# was an unverified assumption in the original generalization -- caught only
+# when the first real Yelp run failed with "Node type 'user' does not exist".
+NODE_TYPE_BY_DATASET = {"amazon": "user", "yelp": "review"}
+
 
 def load_fraud_graph(dataset_name):
     """Loads a DGL FraudDataset (Amazon or Yelp) and flattens the multi-
@@ -96,8 +104,9 @@ def load_fraud_graph(dataset_name):
 
     dataset = DGLFraudDataset()
     hetero_graph = dataset[0]
+    ntype = NODE_TYPE_BY_DATASET[dataset_name]
 
-    n_nodes = hetero_graph.num_nodes("user")
+    n_nodes = hetero_graph.num_nodes(ntype)
     G = nx.Graph()
     G.add_nodes_from(range(n_nodes))
 
