@@ -161,15 +161,16 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
             top_exposed = eligible_normal_idx[order]
             calib_idx = top_exposed[:n_calib]
 
-    remaining_normal = np.setdiff1d(normal_idx, calib_idx)
-    # Subsample the normal test pool. Testing against ALL remaining normal
-    # nodes (~9000+ here) makes the BH rejection threshold too strict to ever
-    # fire even with real detector signal present, because a test point
-    # typically needs to beat nearly the entire calibration set to reach a
-    # low enough rank. This is a standard, valid design choice -- random
-    # subsampling doesn't violate conformal exchangeability -- and gives the
-    # procedure a realistic chance to detect signal that AUROC=0.83 shows
-    # actually exists in this data.
+    # CRITICAL FIX: trimmed-out extreme-score nodes must be excluded from the
+    # TEST set too, not just calibration eligibility. Trimming only calibration
+    # breaks the exchangeability conformal p-values rely on -- any leftover
+    # extreme-score normal node in the test set would face artificially weak
+    # competition (its real competitors were removed from calibration but not
+    # from test), manufacturing false discoveries as an artifact of the
+    # asymmetry, not genuine contamination breaking validity. (This was caught
+    # after an initial run showed realized FDR ~0.51 -- 5x nominal -- which
+    # is the expected signature of exactly this bug, not a real finding.)
+    remaining_normal = np.setdiff1d(eligible_normal_idx, calib_idx)
     max_normal_test = 5000
     if len(remaining_normal) > max_normal_test:
         remaining_normal = rng.choice(remaining_normal, size=max_normal_test, replace=False)
