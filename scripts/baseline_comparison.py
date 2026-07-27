@@ -141,6 +141,43 @@ def run_our_method_trial(alpha, seed, n_epochs, device, calib_frac=0.4):
     }
 
 
+def run_naive_threshold_trial(alpha, seed, n_epochs, device, top_k_frac=None):
+    """Method C: the simplest possible baseline. Single seed, single model,
+    NO conformal p-values, NO BH, NO ensembling -- just threshold the raw
+    anomaly scores at the oracle anomaly rate. This isolates whether the
+    conformal+BH machinery adds value over doing nothing statistically
+    sophisticated at all, as opposed to Method B (ensemble baseline) which
+    isolates whether SEED-DERANDOMIZATION specifically adds value. Together,
+    A vs C tests the whole apparatus; A vs B tests just the ensembling piece."""
+    cfg = GraphGenConfig(
+        n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
+        feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
+    )
+    gen = ContaminatedGraphGenerator(cfg)
+    graph, features, labels = gen.generate()
+
+    if top_k_frac is None:
+        top_k_frac = labels.mean()
+
+    scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
+                                verbose=False, device=device)
+
+    n_nodes = len(labels)
+    k = int(round(top_k_frac * n_nodes))
+    top_k_idx = np.argsort(-scores)[:k]
+    flagged = np.zeros(n_nodes, dtype=bool)
+    flagged[top_k_idx] = True
+
+    n_discoveries = flagged.sum()
+    realized_fdr = (np.sum(flagged & (labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
+    power = (np.sum(flagged & (labels == 1)) / labels.sum()) if labels.sum() > 0 else 0.0
+
+    return {
+        "method": "naive_threshold", "seed": seed, "n_ensemble": 1,
+        "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_seeds", type=int, default=20)
@@ -175,6 +212,13 @@ def main():
         print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
               f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
 
+    print(f"\n=== Method C: naive single-seed threshold baseline ({args.n_seeds} seeds) ===")
+    for seed in range(args.n_seeds):
+        r = run_naive_threshold_trial(args.alpha, seed, args.n_epochs, device)
+        all_results.append(r)
+        print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
+              f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
+
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
     csv_path = os.path.join(out_dir, "baseline_comparison.csv")
@@ -185,7 +229,7 @@ def main():
     print(f"\nSaved raw results to {csv_path}")
 
     print("\n=== Summary ===")
-    for method in ["our_conformal_bh", "ensemble_baseline"]:
+    for method in ["our_conformal_bh", "ensemble_baseline", "naive_threshold"]:
         subset = [r for r in all_results if r["method"] == method]
         if not subset:
             continue
@@ -195,17 +239,25 @@ def main():
               f"(nominal={args.alpha}), power={powers.mean():.3f}+/-{powers.std():.3f}")
 
     ours = [r["realized_fdr"] for r in all_results if r["method"] == "our_conformal_bh"]
-    baseline = [r["realized_fdr"] for r in all_results if r["method"] == "ensemble_baseline"]
-    if len(ours) == len(baseline) and len(ours) >= 5:
-        ttest = stats.ttest_rel(baseline, ours)
-        print(f"\nPaired t-test (baseline FDR vs. ours, same seeds): "
-              f"t={ttest.statistic:.3f}, p={ttest.pvalue:.4f}")
+    baseline_b = [r["realized_fdr"] for r in all_results if r["method"] == "ensemble_baseline"]
+    baseline_c = [r["realized_fdr"] for r in all_results if r["method"] == "naive_threshold"]
+    if len(ours) == len(baseline_b) and len(ours) >= 5:
+        ttest_b = stats.ttest_rel(baseline_b, ours)
+        print(f"\nPaired t-test (Method B ensemble baseline vs. ours, same seeds): "
+              f"t={ttest_b.statistic:.3f}, p={ttest_b.pvalue:.4f}")
+    if len(ours) == len(baseline_c) and len(ours) >= 5:
+        ttest_c = stats.ttest_rel(baseline_c, ours)
+        print(f"Paired t-test (Method C naive threshold vs. ours, same seeds): "
+              f"t={ttest_c.statistic:.3f}, p={ttest_c.pvalue:.4f}")
 
     print("\nInterpretation: if the ensemble baseline's FDR is comparable to or lower than "
           "ours WITHOUT any formal guarantee, our method's selling point must rest on the "
           "guarantee itself (worst-case protection) rather than better typical-case numbers. "
           "If the baseline's FDR is meaningfully higher or more variable, that is a real "
-          "empirical advantage for the conformal approach, not just a theoretical one.")
+          "empirical advantage for the conformal approach, not just a theoretical one. "
+          "Method C (naive threshold) is expected to have the least controlled FDR of the "
+          "three -- if it doesn't, that's an important finding: it would mean the conformal "
+          "machinery adds no measurable value at all, only a theoretical guarantee.")
 
 
 if __name__ == "__main__":

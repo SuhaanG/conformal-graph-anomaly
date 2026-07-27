@@ -31,7 +31,10 @@ import networkx as nx
 
 
 def normalize_adj(A: np.ndarray) -> torch.Tensor:
-    """Symmetric normalization: D^-1/2 (A + I) D^-1/2, standard GCN propagation matrix."""
+    """Symmetric normalization: D^-1/2 (A + I) D^-1/2, standard GCN propagation matrix.
+    DENSE version -- kept exactly as-is for backward compatibility with all
+    already-validated results (synthetic experiments, Amazon real-data run).
+    Do not modify; use normalize_adj_sparse for the scalable path instead."""
     A_hat = A + np.eye(A.shape[0])
     deg = A_hat.sum(axis=1)
     deg_inv_sqrt = np.zeros_like(deg)
@@ -42,12 +45,61 @@ def normalize_adj(A: np.ndarray) -> torch.Tensor:
     return torch.tensor(A_norm, dtype=torch.float32)
 
 
+def normalize_adj_sparse(graph: nx.Graph, device: str) -> torch.Tensor:
+    """SCALABLE version of normalize_adj: builds the same D^-1/2 (A+I) D^-1/2
+    propagation matrix but as a torch sparse tensor, avoiding the O(n^2)
+    dense memory that made Yelp (45,954 nodes, ~2.1B dense entries)
+    impractically slow. Mathematically identical normalization to
+    normalize_adj -- only the representation differs."""
+    n = graph.number_of_nodes()
+    edges = list(graph.edges())
+    src = [u for u, v in edges] + [v for u, v in edges] + list(range(n))  # symmetric + self-loops
+    dst = [v for u, v in edges] + [u for u, v in edges] + list(range(n))
+    src, dst = np.array(src), np.array(dst)
+
+    deg = np.zeros(n)
+    np.add.at(deg, src, 1.0)
+    deg_inv_sqrt = np.zeros(n)
+    nonzero = deg > 0
+    deg_inv_sqrt[nonzero] = np.power(deg[nonzero], -0.5)
+
+    vals = deg_inv_sqrt[src] * deg_inv_sqrt[dst]
+    indices = torch.tensor(np.stack([src, dst]), dtype=torch.long)
+    values = torch.tensor(vals, dtype=torch.float32)
+    A_norm_sparse = torch.sparse_coo_tensor(indices, values, size=(n, n)).coalesce().to(device)
+    return A_norm_sparse
+
+
+def sample_structure_pairs(graph: nx.Graph, seed: int, neg_ratio: int = 1):
+    """Samples positive (real edges) and negative (random non-edges) node
+    pairs for edge-sampled structure reconstruction loss, replacing the
+    dense Z @ Z.T computation. neg_ratio negatives are sampled per positive."""
+    rng = np.random.default_rng(seed)
+    n = graph.number_of_nodes()
+    edges = np.array(list(graph.edges()))
+    n_pos = len(edges)
+
+    pos_src, pos_dst = edges[:, 0], edges[:, 1]
+
+    neg_src = rng.integers(0, n, size=n_pos * neg_ratio)
+    neg_dst = rng.integers(0, n, size=n_pos * neg_ratio)
+
+    return (
+        torch.tensor(pos_src, dtype=torch.long),
+        torch.tensor(pos_dst, dtype=torch.long),
+        torch.tensor(neg_src, dtype=torch.long),
+        torch.tensor(neg_dst, dtype=torch.long),
+    )
+
+
 class GCNLayer(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.linear = nn.Linear(in_dim, out_dim)
 
     def forward(self, A_norm, X):
+        # A_norm @ ... works for both dense and sparse tensors in PyTorch
+        # (sparse uses torch.sparse.mm under the hood via the @ operator).
         return A_norm @ self.linear(X)
 
 
@@ -131,6 +183,110 @@ def train_dominant(
         X_hat, A_hat, Z = model(A_norm, X)
         attr_err = torch.sum((X - X_hat) ** 2, dim=1)
         struct_err = torch.sum((A_target - A_hat) ** 2, dim=1)
+        scores = alpha * attr_err + (1 - alpha) * struct_err
+
+    return scores.cpu().numpy(), model
+
+
+def train_dominant_scalable(
+    graph: nx.Graph,
+    features: np.ndarray,
+    n_epochs: int = 100,
+    hidden_dim: int = 64,
+    lr: float = 0.01,
+    alpha: float = 0.5,
+    device: str = "cpu",
+    seed: int = 0,
+    verbose: bool = True,
+    neg_ratio: int = 1,
+):
+    """
+    *** NOT VALIDATED -- DO NOT USE FOR REAL EXPERIMENTS YET ***
+
+    Attempted scalable variant of train_dominant for large graphs (e.g.
+    Yelp, 45,954 nodes) where the dense structure decoder is impractically
+    slow. Diagnostic testing on synthetic data found this scoring approach
+    INVERTS the anomaly signal (structure-only AUROC = 0.0000, a perfect
+    inversion, not noise) -- likely because in homophilous-anomaly setups
+    (p_aa > p_nn), anomaly-anomaly edges are actually EASIER to reconstruct
+    (tight, predictable clusters), giving anomalies LOWER reconstruction
+    error, the opposite of the intended signal. Attribute-only path also
+    underperforms the dense version (0.556 vs ~0.89 AUROC at a comparable
+    config), suggesting the sparse propagation path itself needs further
+    debugging too, not just the structure-loss scoring.
+
+    Left in the codebase intentionally (not deleted) so the sparse-matrix
+    infrastructure (normalize_adj_sparse, sample_structure_pairs) can be
+    reused once the scoring design is fixed -- but the scoring logic below
+    needs a redesign (e.g. comparing a node's edge-reconstruction quality
+    against a null/random-pair baseline rather than raw NLL) before this
+    is trustworthy. DO NOT wire this into real_data_experiment.py for Yelp
+    until re-validated with a synthetic AUROC sanity check first.
+    """
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    n = graph.number_of_nodes()
+    A_norm = normalize_adj_sparse(graph, device)
+    X = torch.tensor(features, dtype=torch.float32).to(device)
+
+    model = DOMINANT(in_dim=features.shape[1], hidden_dim=hidden_dim).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    pos_src, pos_dst, neg_src, neg_dst = sample_structure_pairs(graph, seed, neg_ratio)
+    pos_src, pos_dst = pos_src.to(device), pos_dst.to(device)
+    neg_src, neg_dst = neg_src.to(device), neg_dst.to(device)
+
+    for epoch in range(n_epochs):
+        model.train()
+        optimizer.zero_grad()
+
+        Z = model.encode(A_norm, X)
+        X_hat = model.attr_decoder(A_norm, Z)
+        attr_loss = torch.mean(torch.sum((X - X_hat) ** 2, dim=1))
+
+        pos_logits = torch.sum(Z[pos_src] * Z[pos_dst], dim=1)
+        neg_logits = torch.sum(Z[neg_src] * Z[neg_dst], dim=1)
+        pos_loss = F.binary_cross_entropy_with_logits(pos_logits, torch.ones_like(pos_logits))
+        neg_loss = F.binary_cross_entropy_with_logits(neg_logits, torch.zeros_like(neg_logits))
+        struct_loss = pos_loss + neg_loss
+
+        loss = alpha * attr_loss + (1 - alpha) * struct_loss
+        loss.backward()
+        optimizer.step()
+
+        if verbose and (epoch % 20 == 0 or epoch == n_epochs - 1):
+            print(f"  epoch {epoch:3d} | loss={loss.item():.4f} "
+                  f"(attr={attr_loss.item():.4f}, struct={struct_loss.item():.4f})")
+
+    model.eval()
+    with torch.no_grad():
+        Z = model.encode(A_norm, X)
+        X_hat = model.attr_decoder(A_norm, Z)
+        attr_err = torch.sum((X - X_hat) ** 2, dim=1)
+
+        # per-node structural error: avg negative log-likelihood of the
+        # node's own true edges (both directions, since graph is undirected).
+        # VECTORIZED via scatter_add -- a Python loop over edges would be
+        # catastrophically slow at Yelp's scale (~3.8M edges).
+        edges = np.array(list(graph.edges()))
+        u_idx = torch.tensor(edges[:, 0], dtype=torch.long, device=device)
+        v_idx = torch.tensor(edges[:, 1], dtype=torch.long, device=device)
+
+        logits_uv = torch.sum(Z[u_idx] * Z[v_idx], dim=1)
+        nll_uv = F.binary_cross_entropy_with_logits(
+            logits_uv, torch.ones_like(logits_uv), reduction="none"
+        )
+
+        struct_err = torch.zeros(n, device=device)
+        counts = torch.zeros(n, device=device)
+        struct_err.scatter_add_(0, u_idx, nll_uv)
+        struct_err.scatter_add_(0, v_idx, nll_uv)
+        counts.scatter_add_(0, u_idx, torch.ones_like(nll_uv))
+        counts.scatter_add_(0, v_idx, torch.ones_like(nll_uv))
+        counts[counts == 0] = 1.0
+        struct_err = struct_err / counts
+
         scores = alpha * attr_err + (1 - alpha) * struct_err
 
     return scores.cpu().numpy(), model
