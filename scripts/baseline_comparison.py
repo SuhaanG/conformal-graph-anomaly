@@ -1,34 +1,56 @@
 """
 baseline_comparison.py
 
-Step 8: the ensemble-averaging baseline. This is the single most important
-comparison a TCYB reviewer would demand -- flagged explicitly in the
-original literature audit as the "free baseline" that could kill the
-paper's framing if it dominates: if simply averaging raw anomaly scores
-across N training seeds achieves comparable false-discovery control and
-power WITHOUT any conformal p-value / BH machinery, then the conformal
-apparatus this whole project is built around adds no real value beyond a
-much simpler ensembling trick.
+Step 8: baseline comparisons -- REVISED after a substantive, correct
+critique of the original version. Documenting the correction explicitly
+rather than silently rewriting, since the flaw and the fix are both
+instructive.
 
-What this tests, precisely:
-- Method A (our method): conformal p-values from a SINGLE seed's scores,
-  calibrated against a held-out set, thresholded via Benjamini-Hochberg.
-  This is what multi_seed_sweep.py / severity_sweep.py / real_data_
-  experiment.py all measure.
-- Method B (the baseline): train N models across N seeds, AVERAGE their
-  raw anomaly scores per node, then flag the top-k nodes by averaged score
-  using a simple fixed threshold (e.g. top X% by score) -- no conformal
-  calibration, no BH, no formal guarantee. This is the "free ensemble"
-  a reviewer will point to.
+WHAT WAS WRONG WITH THE ORIGINAL VERSION:
+The original Method B (ensemble) and Method C (naive) baselines flagged a
+FIXED number of nodes (k = oracle anomaly rate * n_nodes) with no
+FDR-targeting mechanism at all. Since k was set to exactly equal the true
+number of anomalies (750 = 750), the identity FDR = 1 - power held
+EXACTLY and TAUTOLOGICALLY for every single trial -- this was verified
+numerically, not just argued. Reporting "the baseline's FDR is ~49%" was
+therefore not an empirical finding about the baseline being poorly
+calibrated; it was an arithmetic consequence of the comparison's design.
+A method with no FDR target cannot "fail" to hit one, any more than a
+ruler can be faulted for reporting the wrong temperature. Additionally,
+the oracle anomaly rate was originally framed as "generous" to the
+baseline; it is actually what FORCES the tautology -- true generosity
+would have let the baseline choose its own threshold.
 
-Since Method B has NO formal FDR guarantee, the fair comparison is: does
-Method B, even without a guarantee, achieve LOWER OR SIMILAR realized FDR
-in practice compared to Method A, for similar or better power? If yes,
-Method A's conformal machinery needs a different selling point (the formal
-guarantee itself, not just better empirical numbers) -- if no, Method A
-has a clear empirical edge in addition to the theoretical guarantee.
+THE FIX: Method B is redesigned to also target FDR via the SAME
+conformal p-value + Benjamini-Hochberg machinery as Method A, applied to
+ensemble-averaged scores instead of single-seed scores. This makes the
+comparison mechanism-vs-mechanism (does averaging scores across seeds
+before conformal calibration help, hurt, or not matter?) instead of
+mechanism-vs-no-mechanism. Method C (naive fixed-rate thresholding) is
+KEPT but explicitly relabeled as a descriptive reference point only --
+its FDR/power numbers are reported, but no claim is made that it "should"
+hit any FDR target, and no t-test treats it as a competing calibrated
+procedure.
 
-Run on Colab:
+ALSO FIXED: honest reporting for Method A distinguishing MARGINAL FDR
+(the actual BH guarantee, averaged over seeds including zero-discovery
+seeds, where empty sets legitimately count as 0) from CONDITIONAL FDR
+(the realized false-discovery proportion only on seeds where a discovery
+was actually made) -- these can differ substantially and reporting only
+the marginal number without disclosing the zero-discovery rate is
+misleading by omission, even though the marginal number itself is not
+incorrect.
+
+ALSO ADDED: a calibration-size check. The critique identified that
+conformal p-values have a resolution floor of 1/(n_calib+1), and BH can
+only reject at rank i if that floor is <= alpha*i/m. With n_calib~1242
+and m~13758, this floor requires i >~ 111 before ANY rejection is
+possible -- explaining the observed all-or-nothing (0 or 120+) discovery
+pattern exactly. This script now also runs a LARGER calibration size
+variant to test whether this is fixable, per the critique's own
+recommendation that this is "the single highest-value fix available."
+
+Run on Colab/H200:
   python3 scripts/baseline_comparison.py --n_seeds 20 --n_ensemble 5 --device cuda
 """
 
@@ -46,54 +68,46 @@ from detector import train_dominant
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
 
-def run_ensemble_baseline_trial(alpha, seed, n_ensemble, n_epochs, device, top_k_frac=None):
-    """Method B: train n_ensemble models across different seeds (derived
-    deterministically from the trial seed), average their raw scores, and
-    flag the top-k nodes by averaged score. top_k_frac defaults to the
-    anomaly rate (0.05) -- the most favorable, "oracle-informed" choice for
-    the baseline, since in practice you wouldn't know the true anomaly rate;
-    this is deliberately generous to the baseline to make the comparison fair."""
-    cfg = GraphGenConfig(
-        n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
-        feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
-    )
-    gen = ContaminatedGraphGenerator(cfg)
-    graph, features, labels = gen.generate()
+def _build_calib_test_split(graph, labels, exposure, normal_idx, anomaly_idx,
+                             condition, calib_frac, seed):
+    """Shared calibration/test split logic used by both Method A and the
+    redesigned Method B, so both apply IDENTICAL conformal machinery to
+    whatever scores they're given -- the only difference between methods
+    should be the SCORES (single-seed vs. ensemble-averaged), not the
+    statistical procedure around them."""
+    clean_pool = normal_idx[exposure == 0]
+    if len(clean_pool) < 20:
+        return None, None, None
+    n_calib = int(round(calib_frac * len(clean_pool)))
 
-    if top_k_frac is None:
-        top_k_frac = labels.mean()  # oracle anomaly rate, generous to baseline
+    rng = np.random.default_rng(seed)
+    if condition == "contaminated":
+        calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
+    else:  # adversarial
+        order = np.argsort(-exposure)
+        calib_idx = normal_idx[order][:n_calib]
 
-    all_scores = []
-    for e in range(n_ensemble):
-        ensemble_seed = seed * 1000 + e  # distinct, reproducible seed per ensemble member
-        scores, _ = train_dominant(graph, features, n_epochs=n_epochs,
-                                    seed=ensemble_seed, verbose=False, device=device)
-        all_scores.append(scores)
+    remaining_normal = np.setdiff1d(normal_idx, calib_idx)
+    test_idx = np.concatenate([remaining_normal, anomaly_idx])
+    test_labels = np.concatenate([
+        np.zeros(len(remaining_normal), dtype=int),
+        np.ones(len(anomaly_idx), dtype=int),
+    ])
+    return calib_idx, test_idx, test_labels
 
-    avg_scores = np.mean(all_scores, axis=0)
-    n_nodes = len(labels)
-    k = int(round(top_k_frac * n_nodes))
-    top_k_idx = np.argsort(-avg_scores)[:k]
 
-    flagged = np.zeros(n_nodes, dtype=bool)
-    flagged[top_k_idx] = True
-
-    n_discoveries = flagged.sum()
-    realized_fdr = (np.sum(flagged & (labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
-    power = (np.sum(flagged & (labels == 1)) / labels.sum()) if labels.sum() > 0 else 0.0
-
-    return {
-        "method": "ensemble_baseline", "seed": seed, "n_ensemble": n_ensemble,
-        "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
-    }
+def _compute_exposure(graph, normal_idx, labels):
+    exposure = np.zeros(len(normal_idx))
+    for j, i in enumerate(normal_idx):
+        neighbors = list(graph.neighbors(i))
+        if len(neighbors) == 0:
+            continue
+        exposure[j] = sum(1 for n in neighbors if labels[n] == 1) / len(neighbors)
+    return exposure
 
 
 def run_our_method_trial(alpha, seed, n_epochs, device, condition="contaminated", calib_frac=0.4):
-    """Method A: our conformal+BH pipeline, single seed. Now supports both
-    the 'contaminated' (random calibration, average-case) and 'adversarial'
-    (worst-case, most-exposed-nodes-in-calibration) conditions, so the
-    baseline comparison can be checked under the harder, more
-    publication-relevant case too -- not just the average case."""
+    """Method A: our conformal+BH pipeline, single seed."""
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
@@ -106,32 +120,12 @@ def run_our_method_trial(alpha, seed, n_epochs, device, condition="contaminated"
 
     normal_idx = np.where(labels == 0)[0]
     anomaly_idx = np.where(labels == 1)[0]
-    exposure = np.zeros(len(normal_idx))
-    for j, i in enumerate(normal_idx):
-        neighbors = list(graph.neighbors(i))
-        if len(neighbors) == 0:
-            continue
-        exposure[j] = sum(1 for n in neighbors if labels[n] == 1) / len(neighbors)
+    exposure = _compute_exposure(graph, normal_idx, labels)
 
-    clean_pool = normal_idx[exposure == 0]
-    if len(clean_pool) < 20:
+    calib_idx, test_idx, test_labels = _build_calib_test_split(
+        graph, labels, exposure, normal_idx, anomaly_idx, condition, calib_frac, seed)
+    if calib_idx is None:
         return None
-    n_calib = int(round(calib_frac * len(clean_pool)))
-
-    rng = np.random.default_rng(seed)
-    if condition == "contaminated":
-        calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
-    else:  # adversarial: worst-case, most-exposed nodes
-        order = np.argsort(-exposure)
-        top_exposed = normal_idx[order]
-        calib_idx = top_exposed[:n_calib]
-
-    remaining_normal = np.setdiff1d(normal_idx, calib_idx)
-    test_idx = np.concatenate([remaining_normal, anomaly_idx])
-    test_labels = np.concatenate([
-        np.zeros(len(remaining_normal), dtype=int),
-        np.ones(len(anomaly_idx), dtype=int),
-    ])
 
     calib_scores = scores[calib_idx]
     test_scores = scores[test_idx]
@@ -142,21 +136,69 @@ def run_our_method_trial(alpha, seed, n_epochs, device, condition="contaminated"
     realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
     power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
 
-    method_name = "our_conformal_bh" if condition == "contaminated" else "our_conformal_bh_adversarial"
+    method_name = f"our_conformal_bh_{condition}_calib{calib_frac}"
     return {
-        "method": method_name, "seed": seed, "n_ensemble": 1,
+        "method": method_name, "seed": seed, "n_ensemble": 1, "calib_frac": calib_frac,
+        "n_calib": len(calib_idx),
         "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
     }
 
 
-def run_naive_threshold_trial(alpha, seed, n_epochs, device, top_k_frac=None):
-    """Method C: the simplest possible baseline. Single seed, single model,
-    NO conformal p-values, NO BH, NO ensembling -- just threshold the raw
-    anomaly scores at the oracle anomaly rate. This isolates whether the
-    conformal+BH machinery adds value over doing nothing statistically
-    sophisticated at all, as opposed to Method B (ensemble baseline) which
-    isolates whether SEED-DERANDOMIZATION specifically adds value. Together,
-    A vs C tests the whole apparatus; A vs B tests just the ensembling piece."""
+def run_ensemble_conformal_trial(alpha, seed, n_ensemble, n_epochs, device,
+                                  condition="contaminated", calib_frac=0.4):
+    """REDESIGNED Method B: train n_ensemble models, average their raw
+    scores, then apply the EXACT SAME conformal p-value + BH procedure as
+    Method A to those averaged scores. This isolates the actual question
+    the baseline was meant to answer -- does averaging scores across
+    seeds before conformal calibration help, hurt, or not matter -- as a
+    fair mechanism-vs-mechanism comparison instead of the original
+    mechanism-vs-no-mechanism design."""
+    cfg = GraphGenConfig(
+        n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
+        feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
+    )
+    gen = ContaminatedGraphGenerator(cfg)
+    graph, features, labels = gen.generate()
+
+    all_scores = []
+    for e in range(n_ensemble):
+        ensemble_seed = seed * 1000 + e
+        s, _ = train_dominant(graph, features, n_epochs=n_epochs,
+                               seed=ensemble_seed, verbose=False, device=device)
+        all_scores.append(s)
+    avg_scores = np.mean(all_scores, axis=0)
+
+    normal_idx = np.where(labels == 0)[0]
+    anomaly_idx = np.where(labels == 1)[0]
+    exposure = _compute_exposure(graph, normal_idx, labels)
+
+    calib_idx, test_idx, test_labels = _build_calib_test_split(
+        graph, labels, exposure, normal_idx, anomaly_idx, condition, calib_frac, seed)
+    if calib_idx is None:
+        return None
+
+    calib_scores = avg_scores[calib_idx]
+    test_scores = avg_scores[test_idx]
+    p_values = conformal_p_values(calib_scores, test_scores)
+    discoveries = benjamini_hochberg(p_values, alpha)
+
+    n_discoveries = discoveries.sum()
+    realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
+    power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
+
+    return {
+        "method": f"ensemble_conformal_bh_{condition}", "seed": seed, "n_ensemble": n_ensemble,
+        "calib_frac": calib_frac, "n_calib": len(calib_idx),
+        "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
+    }
+
+
+def run_naive_threshold_trial(seed, n_epochs, device, top_k_frac=None):
+    """Method C, KEPT as a descriptive reference point only. NOT a
+    calibrated FDR-targeting procedure -- no t-test compares it to Method
+    A as if it were a competing FDR method, per the critique. Its
+    FDR = 1 - power identity is an ARITHMETIC ARTIFACT of setting
+    k = true anomaly count, not a finding about the method's quality."""
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
@@ -181,19 +223,46 @@ def run_naive_threshold_trial(alpha, seed, n_epochs, device, top_k_frac=None):
     power = (np.sum(flagged & (labels == 1)) / labels.sum()) if labels.sum() > 0 else 0.0
 
     return {
-        "method": "naive_threshold", "seed": seed, "n_ensemble": 1,
+        "method": "naive_threshold_DESCRIPTIVE_ONLY", "seed": seed, "n_ensemble": 1,
+        "calib_frac": None, "n_calib": None,
         "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
     }
+
+
+def summarize_with_conditional(all_results, method, alpha):
+    subset = [r for r in all_results if r["method"] == method]
+    if not subset:
+        return
+    fdrs = np.array([r["realized_fdr"] for r in subset])
+    powers = np.array([r["power"] for r in subset])
+    n_disc = np.array([r["n_discoveries"] for r in subset])
+    n_zero = int(np.sum(n_disc == 0))
+    n_total = len(subset)
+
+    print(f"{method}:")
+    print(f"  marginal (all {n_total} seeds): realized_fdr={fdrs.mean():.3f}+/-{fdrs.std():.3f} "
+          f"(nominal={alpha}), power={powers.mean():.3f}+/-{powers.std():.3f}")
+    print(f"  zero-discovery seeds: {n_zero}/{n_total} ({100*n_zero/n_total:.0f}%)")
+    if n_zero < n_total:
+        cond_fdrs = fdrs[n_disc > 0]
+        print(f"  CONDITIONAL on nonzero discovery ({n_total - n_zero} seeds): "
+              f"realized_fdr={cond_fdrs.mean():.3f}+/-{cond_fdrs.std():.3f}")
+        if cond_fdrs.mean() > alpha:
+            print(f"  NOTE: conditional FDR ({cond_fdrs.mean():.3f}) exceeds nominal ({alpha}) -- "
+              f"this is still consistent with valid marginal FDR control (BH's guarantee is an "
+              f"average over runs including empty sets), but should be reported honestly rather "
+              f"than only citing the marginal number.")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_seeds", type=int, default=20)
-    parser.add_argument("--n_ensemble", type=int, default=5,
-                         help="Number of models to ensemble for the baseline.")
+    parser.add_argument("--n_ensemble", type=int, default=5)
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--large_calib_frac", type=float, default=0.9,
+                         help="Larger calibration fraction to test the resolution-floor fix.")
     args = parser.parse_args()
 
     import torch
@@ -202,91 +271,84 @@ def main():
 
     all_results = []
 
-    print(f"=== Method A: our conformal+BH pipeline, contaminated condition ({args.n_seeds} seeds) ===")
-    for seed in range(args.n_seeds):
-        r = run_our_method_trial(args.alpha, seed, args.n_epochs, device, condition="contaminated")
-        if r is None:
-            print(f"  seed {seed}: skipped")
-            continue
-        all_results.append(r)
-        print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
-              f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
+    for condition in ["contaminated", "adversarial"]:
+        print(f"=== Method A: our conformal+BH, {condition}, calib_frac=0.4 ({args.n_seeds} seeds) ===")
+        for seed in range(args.n_seeds):
+            r = run_our_method_trial(args.alpha, seed, args.n_epochs, device,
+                                      condition=condition, calib_frac=0.4)
+            if r is None:
+                print(f"  seed {seed}: skipped")
+                continue
+            all_results.append(r)
+            print(f"  seed {seed}: n_calib={r['n_calib']} n_discoveries={r['n_discoveries']:3d} "
+                  f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
 
-    print(f"\n=== Method A: our conformal+BH pipeline, ADVERSARIAL condition "
-          f"({args.n_seeds} seeds) -- the harder, more publication-relevant case ===")
-    for seed in range(args.n_seeds):
-        r = run_our_method_trial(args.alpha, seed, args.n_epochs, device, condition="adversarial")
-        if r is None:
-            print(f"  seed {seed}: skipped")
-            continue
-        all_results.append(r)
-        print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
-              f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
+        print(f"\n=== RESOLUTION-FLOOR CHECK: Method A, {condition}, "
+              f"LARGER calib_frac={args.large_calib_frac} ({args.n_seeds} seeds) ===")
+        for seed in range(args.n_seeds):
+            r = run_our_method_trial(args.alpha, seed, args.n_epochs, device,
+                                      condition=condition, calib_frac=args.large_calib_frac)
+            if r is None:
+                print(f"  seed {seed}: skipped")
+                continue
+            all_results.append(r)
+            print(f"  seed {seed}: n_calib={r['n_calib']} n_discoveries={r['n_discoveries']:3d} "
+                  f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
 
-    print(f"\n=== Method B: ensemble-averaging baseline "
-          f"({args.n_seeds} trials, {args.n_ensemble} models averaged each) ===")
-    for seed in range(args.n_seeds):
-        r = run_ensemble_baseline_trial(args.alpha, seed, args.n_ensemble, args.n_epochs, device)
-        all_results.append(r)
-        print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
-              f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
+        print(f"\n=== Method B (REDESIGNED): ensemble-averaged scores -> conformal+BH, "
+              f"{condition} ({args.n_seeds} trials, {args.n_ensemble} models each) ===")
+        for seed in range(args.n_seeds):
+            r = run_ensemble_conformal_trial(args.alpha, seed, args.n_ensemble, args.n_epochs,
+                                              device, condition=condition, calib_frac=0.4)
+            if r is None:
+                print(f"  seed {seed}: skipped")
+                continue
+            all_results.append(r)
+            print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
+                  f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
 
-    print(f"\n=== Method C: naive single-seed threshold baseline ({args.n_seeds} seeds) ===")
+    print(f"\n=== Method C (DESCRIPTIVE ONLY, not FDR-targeting): naive fixed-rate threshold "
+          f"({args.n_seeds} seeds) ===")
     for seed in range(args.n_seeds):
-        r = run_naive_threshold_trial(args.alpha, seed, args.n_epochs, device)
+        r = run_naive_threshold_trial(seed, args.n_epochs, device)
         all_results.append(r)
         print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
               f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, "baseline_comparison.csv")
+    csv_path = os.path.join(out_dir, "baseline_comparison_v2.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_results[0].keys()))
         writer.writeheader()
         writer.writerows(all_results)
     print(f"\nSaved raw results to {csv_path}")
 
-    print("\n=== Summary ===")
-    for method in ["our_conformal_bh", "our_conformal_bh_adversarial", "ensemble_baseline", "naive_threshold"]:
-        subset = [r for r in all_results if r["method"] == method]
-        if not subset:
-            continue
-        fdrs = np.array([r["realized_fdr"] for r in subset])
-        powers = np.array([r["power"] for r in subset])
-        print(f"{method}: realized_fdr={fdrs.mean():.3f}+/-{fdrs.std():.3f} "
-              f"(nominal={args.alpha}), power={powers.mean():.3f}+/-{powers.std():.3f}")
+    print("\n=== Summary (marginal + conditional FDR for every method) ===")
+    method_names = sorted(set(r["method"] for r in all_results))
+    for method in method_names:
+        summarize_with_conditional(all_results, method, args.alpha)
+        print()
 
-    ours = [r["realized_fdr"] for r in all_results if r["method"] == "our_conformal_bh"]
-    ours_adv = [r["realized_fdr"] for r in all_results if r["method"] == "our_conformal_bh_adversarial"]
-    baseline_b = [r["realized_fdr"] for r in all_results if r["method"] == "ensemble_baseline"]
-    baseline_c = [r["realized_fdr"] for r in all_results if r["method"] == "naive_threshold"]
+    print("=== Paired t-tests: mechanism-vs-mechanism comparisons only ===")
+    for condition in ["contaminated", "adversarial"]:
+        ours = [r["realized_fdr"] for r in all_results
+                if r["method"] == f"our_conformal_bh_{condition}_calib0.4"]
+        ensemble = [r["realized_fdr"] for r in all_results
+                    if r["method"] == f"ensemble_conformal_bh_{condition}"]
+        if len(ours) == len(ensemble) and len(ours) >= 5:
+            t = stats.ttest_rel(ensemble, ours)
+            print(f"{condition}: ensemble-conformal vs. single-seed-conformal: "
+                  f"t={t.statistic:.3f}, p={t.pvalue:.4f}")
 
-    if len(ours) == len(baseline_b) and len(ours) >= 5:
-        ttest_b = stats.ttest_rel(baseline_b, ours)
-        print(f"\nPaired t-test (Method B ensemble baseline vs. ours [contaminated]): "
-              f"t={ttest_b.statistic:.3f}, p={ttest_b.pvalue:.4f}")
-    if len(ours) == len(baseline_c) and len(ours) >= 5:
-        ttest_c = stats.ttest_rel(baseline_c, ours)
-        print(f"Paired t-test (Method C naive threshold vs. ours [contaminated]): "
-              f"t={ttest_c.statistic:.3f}, p={ttest_c.pvalue:.4f}")
-    if len(ours_adv) == len(baseline_b) and len(ours_adv) >= 5:
-        ttest_b_adv = stats.ttest_rel(baseline_b, ours_adv)
-        print(f"Paired t-test (Method B ensemble baseline vs. ours [adversarial]): "
-              f"t={ttest_b_adv.statistic:.3f}, p={ttest_b_adv.pvalue:.4f}")
-    if len(ours_adv) == len(baseline_c) and len(ours_adv) >= 5:
-        ttest_c_adv = stats.ttest_rel(baseline_c, ours_adv)
-        print(f"Paired t-test (Method C naive threshold vs. ours [adversarial]): "
-              f"t={ttest_c_adv.statistic:.3f}, p={ttest_c_adv.pvalue:.4f}")
-
-    print("\nInterpretation: if the ensemble baseline's FDR is comparable to or lower than "
-          "ours WITHOUT any formal guarantee, our method's selling point must rest on the "
-          "guarantee itself (worst-case protection) rather than better typical-case numbers. "
-          "If the baseline's FDR is meaningfully higher or more variable, that is a real "
-          "empirical advantage for the conformal approach, not just a theoretical one. "
-          "Method C (naive threshold) is expected to have the least controlled FDR of the "
-          "three -- if it doesn't, that's an important finding: it would mean the conformal "
-          "machinery adds no measurable value at all, only a theoretical guarantee.")
+    print("\nHONEST interpretation: this comparison now tests whether averaging scores across "
+          "seeds BEFORE conformal calibration changes FDR/power, holding the FDR-targeting "
+          "procedure itself constant. Method C's numbers are reported for reference but its "
+          "FDR = 1 - power identity is an artifact of matching k to the true anomaly count, "
+          "not a finding -- do not cite it as 'the naive baseline fails to control FDR.' Check "
+          "the resolution-floor section: if the larger calib_frac run shows meaningfully fewer "
+          "zero-discovery seeds and/or better power at a similar realized FDR, that confirms "
+          "calibration size was capping power and should become the new default going forward.")
 
 
 if __name__ == "__main__":
