@@ -88,11 +88,12 @@ def run_ensemble_baseline_trial(alpha, seed, n_ensemble, n_epochs, device, top_k
     }
 
 
-def run_our_method_trial(alpha, seed, n_epochs, device, calib_frac=0.4):
-    """Method A: our conformal+BH pipeline, single seed, 'contaminated'
-    (random calibration) condition -- the standard, average-case setting,
-    for a fair like-for-like comparison against the ensemble baseline
-    (which also uses no special adversarial selection)."""
+def run_our_method_trial(alpha, seed, n_epochs, device, condition="contaminated", calib_frac=0.4):
+    """Method A: our conformal+BH pipeline, single seed. Now supports both
+    the 'contaminated' (random calibration, average-case) and 'adversarial'
+    (worst-case, most-exposed-nodes-in-calibration) conditions, so the
+    baseline comparison can be checked under the harder, more
+    publication-relevant case too -- not just the average case."""
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
@@ -118,7 +119,13 @@ def run_our_method_trial(alpha, seed, n_epochs, device, calib_frac=0.4):
     n_calib = int(round(calib_frac * len(clean_pool)))
 
     rng = np.random.default_rng(seed)
-    calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
+    if condition == "contaminated":
+        calib_idx = rng.choice(normal_idx, size=n_calib, replace=False)
+    else:  # adversarial: worst-case, most-exposed nodes
+        order = np.argsort(-exposure)
+        top_exposed = normal_idx[order]
+        calib_idx = top_exposed[:n_calib]
+
     remaining_normal = np.setdiff1d(normal_idx, calib_idx)
     test_idx = np.concatenate([remaining_normal, anomaly_idx])
     test_labels = np.concatenate([
@@ -135,8 +142,9 @@ def run_our_method_trial(alpha, seed, n_epochs, device, calib_frac=0.4):
     realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
     power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
 
+    method_name = "our_conformal_bh" if condition == "contaminated" else "our_conformal_bh_adversarial"
     return {
-        "method": "our_conformal_bh", "seed": seed, "n_ensemble": 1,
+        "method": method_name, "seed": seed, "n_ensemble": 1,
         "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
     }
 
@@ -194,9 +202,20 @@ def main():
 
     all_results = []
 
-    print(f"=== Method A: our conformal+BH pipeline ({args.n_seeds} seeds) ===")
+    print(f"=== Method A: our conformal+BH pipeline, contaminated condition ({args.n_seeds} seeds) ===")
     for seed in range(args.n_seeds):
-        r = run_our_method_trial(args.alpha, seed, args.n_epochs, device)
+        r = run_our_method_trial(args.alpha, seed, args.n_epochs, device, condition="contaminated")
+        if r is None:
+            print(f"  seed {seed}: skipped")
+            continue
+        all_results.append(r)
+        print(f"  seed {seed}: n_discoveries={r['n_discoveries']:3d} "
+              f"realized_fdr={r['realized_fdr']:.3f} power={r['power']:.3f}")
+
+    print(f"\n=== Method A: our conformal+BH pipeline, ADVERSARIAL condition "
+          f"({args.n_seeds} seeds) -- the harder, more publication-relevant case ===")
+    for seed in range(args.n_seeds):
+        r = run_our_method_trial(args.alpha, seed, args.n_epochs, device, condition="adversarial")
         if r is None:
             print(f"  seed {seed}: skipped")
             continue
@@ -229,7 +248,7 @@ def main():
     print(f"\nSaved raw results to {csv_path}")
 
     print("\n=== Summary ===")
-    for method in ["our_conformal_bh", "ensemble_baseline", "naive_threshold"]:
+    for method in ["our_conformal_bh", "our_conformal_bh_adversarial", "ensemble_baseline", "naive_threshold"]:
         subset = [r for r in all_results if r["method"] == method]
         if not subset:
             continue
@@ -239,16 +258,26 @@ def main():
               f"(nominal={args.alpha}), power={powers.mean():.3f}+/-{powers.std():.3f}")
 
     ours = [r["realized_fdr"] for r in all_results if r["method"] == "our_conformal_bh"]
+    ours_adv = [r["realized_fdr"] for r in all_results if r["method"] == "our_conformal_bh_adversarial"]
     baseline_b = [r["realized_fdr"] for r in all_results if r["method"] == "ensemble_baseline"]
     baseline_c = [r["realized_fdr"] for r in all_results if r["method"] == "naive_threshold"]
+
     if len(ours) == len(baseline_b) and len(ours) >= 5:
         ttest_b = stats.ttest_rel(baseline_b, ours)
-        print(f"\nPaired t-test (Method B ensemble baseline vs. ours, same seeds): "
+        print(f"\nPaired t-test (Method B ensemble baseline vs. ours [contaminated]): "
               f"t={ttest_b.statistic:.3f}, p={ttest_b.pvalue:.4f}")
     if len(ours) == len(baseline_c) and len(ours) >= 5:
         ttest_c = stats.ttest_rel(baseline_c, ours)
-        print(f"Paired t-test (Method C naive threshold vs. ours, same seeds): "
+        print(f"Paired t-test (Method C naive threshold vs. ours [contaminated]): "
               f"t={ttest_c.statistic:.3f}, p={ttest_c.pvalue:.4f}")
+    if len(ours_adv) == len(baseline_b) and len(ours_adv) >= 5:
+        ttest_b_adv = stats.ttest_rel(baseline_b, ours_adv)
+        print(f"Paired t-test (Method B ensemble baseline vs. ours [adversarial]): "
+              f"t={ttest_b_adv.statistic:.3f}, p={ttest_b_adv.pvalue:.4f}")
+    if len(ours_adv) == len(baseline_c) and len(ours_adv) >= 5:
+        ttest_c_adv = stats.ttest_rel(baseline_c, ours_adv)
+        print(f"Paired t-test (Method C naive threshold vs. ours [adversarial]): "
+              f"t={ttest_c_adv.statistic:.3f}, p={ttest_c_adv.pvalue:.4f}")
 
     print("\nInterpretation: if the ensemble baseline's FDR is comparable to or lower than "
           "ours WITHOUT any formal guarantee, our method's selling point must rest on the "
