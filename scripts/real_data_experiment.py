@@ -199,7 +199,12 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
         n_calib = len(clean_pool)
         calib_idx = clean_pool
     else:
-        n_calib = min(2000, len(eligible_normal_idx))
+        # UPDATED: increased from 2000 to 4000 (roughly doubled) after a
+        # baseline-comparison test on synthetic data showed this size of
+        # calibration set was capping power -- zero-discovery rate dropped
+        # from ~60% to ~10-15% and power roughly doubled when calibration
+        # size was increased proportionally, with FDR remaining controlled.
+        n_calib = min(4000, len(eligible_normal_idx))
         if contamination_condition == "contaminated":
             calib_idx = rng.choice(eligible_normal_idx, size=n_calib, replace=False)
         else:  # adversarial: worst case WITHIN the trimmed eligible pool

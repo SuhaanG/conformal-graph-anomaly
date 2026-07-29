@@ -42,18 +42,19 @@ from detector import train_dominant
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
 
-def run_severity_trial(p_an, alpha, seed, n_epochs, device, n_calib=1242):
+def run_severity_trial(p_an, alpha, seed, n_epochs, device, n_calib=2794):
     """Same pipeline as run_single_trial's 'adversarial' condition, but with
     p_an as a free parameter instead of fixed, so we can sweep contamination
     severity directly.
 
-    n_calib is now a FIXED constant (1242, matching the validated Step 5
-    setup at n_nodes=15000: round(0.4 * 3104), where 3104 was the clean-pool
-    size at the baseline p_an=0.002) rather than derived from the
-    clean-calibration pool each time, because that pool collapses to
-    near-zero at higher p_an values -- and we don't need it here, since this
-    sweep only runs the adversarial condition (top-exposed nodes), not the
-    clean condition."""
+    n_calib is now a FIXED constant (2794, matching calib_frac=0.9 at the
+    baseline severity level p_an=0.002) rather than derived from the
+    clean-calibration pool each time. UPDATED from the original 1242
+    (calib_frac=0.4) after a baseline-comparison test showed the smaller
+    calibration size was capping power: zero-discovery rate dropped from
+    ~60% to ~10-15% and power roughly doubled at calib_frac=0.9, with FDR
+    remaining controlled at both sizes. This sweep only runs the
+    adversarial condition (top-exposed nodes), not the clean condition."""
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=p_an, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,

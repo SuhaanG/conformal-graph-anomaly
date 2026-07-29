@@ -80,7 +80,7 @@ def run_single_trial(
     alpha: float = 0.10,
     seed: int = 0,
     n_epochs: int = 100,
-    calib_frac: float = 0.4,
+    calib_frac: float = 0.9,
     device: str = "cpu",
     score_alpha: float = 0.5,  # weight on attribute vs structure loss in the detector
 ):
