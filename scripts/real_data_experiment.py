@@ -74,14 +74,8 @@ from scipy import stats
 from detector import train_dominant
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
-SUPPORTED_DATASETS = {"amazon", "yelp"}
+SUPPORTED_DATASETS = {"amazon", "yelp", "tolokers"}
 
-# CORRECTION: Amazon and Yelp do NOT share an identical node-type name, despite
-# both being DGL FraudDataset variants with the same ndata schema otherwise.
-# Amazon models fraud at the USER level (ntype "user"); Yelp models fraud at
-# the REVIEW level (ntype "review"), confirmed via DGL's official docs. This
-# was an unverified assumption in the original generalization -- caught only
-# when the first real Yelp run failed with "Node type 'user' does not exist".
 NODE_TYPE_BY_DATASET = {"amazon": "user", "yelp": "review"}
 
 
@@ -90,11 +84,18 @@ def load_fraud_graph(dataset_name):
     relation heterogeneous graph into a single homogeneous networkx graph,
     matching the interface our synthetic pipeline already expects
     (graph, features, labels). Both fraud datasets share this exact schema,
-    so this function is dataset-agnostic beyond the class name lookup."""
-    if dataset_name not in SUPPORTED_DATASETS:
-        raise ValueError(f"dataset_name must be one of {SUPPORTED_DATASETS}, got '{dataset_name}'. "
-                          f"Elliptic/Tolokers/T-Finance are NOT yet supported (different library, "
-                          f"different data conventions -- would need separate dedicated integration).")
+    so this function is dataset-agnostic beyond the class name lookup.
+
+    NOTE: "tolokers" is NOT loaded here -- it uses a separate PyTorch
+    Geometric-based loader (load_tolokers_graph) since it comes from a
+    different library with a different (homogeneous, not multi-relation
+    heterogeneous) data format. Route dataset loading through
+    load_any_dataset() below rather than calling this function directly
+    when dataset_name might be "tolokers"."""
+    if dataset_name not in {"amazon", "yelp"}:
+        raise ValueError(f"load_fraud_graph only handles 'amazon'/'yelp' (DGL FraudDataset "
+                          f"family), got '{dataset_name}'. Use load_any_dataset() instead, which "
+                          f"dispatches to the correct loader per dataset.")
 
     import dgl
     if dataset_name == "amazon":
@@ -127,6 +128,61 @@ def load_fraud_graph(dataset_name):
     features = (features - feat_mean) / feat_std
 
     return G, features, labels
+
+
+def load_tolokers_graph():
+    """Loads the Tolokers dataset (PyTorch Geometric's
+    HeterophilousGraphDataset family) -- a real, organic binary
+    classification graph (banned/not-banned crowdworkers on the Toloka
+    platform), 11,758 nodes, 519,000 edges. Chosen as a second real
+    dataset over Yelp/Elliptic/T-Finance specifically because its scale
+    (~11.8K nodes) is nearly identical to the already-validated Amazon
+    dataset (~11.9K nodes), so it runs within the existing DENSE detector
+    pipeline without hitting the scalability wall that made Yelp
+    impractical (Yelp is ~46K nodes, ~4x larger, and its dense structure
+    decoder computation scales quadratically with node count).
+
+    Homogeneous graph (not multi-relation heterogeneous like the DGL fraud
+    datasets), so this loader is structurally simpler -- no edge-type
+    union needed."""
+    from torch_geometric.datasets import HeterophilousGraphDataset
+
+    dataset = HeterophilousGraphDataset(root="/tmp/tolokers_data", name="Tolokers")
+    data = dataset[0]
+
+    n_nodes = data.num_nodes
+    G = nx.Graph()
+    G.add_nodes_from(range(n_nodes))
+    edge_index = data.edge_index.numpy()
+    edges = list(zip(edge_index[0].tolist(), edge_index[1].tolist()))
+    G.add_edges_from(edges)
+
+    features = data.x.numpy()
+    labels = data.y.numpy()
+    labels = np.where(labels == 1, 1, 0)
+
+    # Same fix as the DGL fraud datasets: standardize features, since
+    # real-world features are unnormalized and unnormalized scale can
+    # invert the anomaly signal entirely (found and fixed on Amazon).
+    feat_mean = features.mean(axis=0, keepdims=True)
+    feat_std = features.std(axis=0, keepdims=True)
+    feat_std[feat_std == 0] = 1.0
+    features = (features - feat_mean) / feat_std
+
+    return G, features, labels
+
+
+def load_any_dataset(dataset_name):
+    """Dispatch function: routes to the correct loader (DGL fraud-dataset
+    family for amazon/yelp, PyTorch Geometric for tolokers) based on which
+    library each dataset actually comes from. Use this instead of calling
+    load_fraud_graph directly when dataset_name could be any supported value."""
+    if dataset_name in {"amazon", "yelp"}:
+        return load_fraud_graph(dataset_name)
+    elif dataset_name == "tolokers":
+        return load_tolokers_graph()
+    else:
+        raise ValueError(f"Unknown dataset '{dataset_name}'. Supported: {SUPPORTED_DATASETS}")
 
 
 def degree_normalize_scores(graph, scores):
@@ -262,7 +318,7 @@ def main():
     print(f"Using device: {device}")
 
     print(f"Loading {args.dataset} fraud dataset...")
-    graph, features, labels = load_fraud_graph(args.dataset)
+    graph, features, labels = load_any_dataset(args.dataset)
     print(f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges, "
           f"{labels.sum()} fraud nodes ({labels.mean():.4f} rate)\n")
 
