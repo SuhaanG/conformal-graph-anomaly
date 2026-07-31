@@ -185,12 +185,43 @@ def load_pygod_graph(dataset_name):
 
     Reddit: 10,984 nodes, ~168K edges, 3.3% anomaly rate (banned users).
     Weibo: 8,405 nodes, ~408K edges, 10.3% anomaly rate (suspicious users).
-    Both smaller than Amazon (11,944 nodes), so no scalability risk."""
+    Both smaller than Amazon (11,944 nodes), so no scalability risk.
+
+    NOTE: PyGOD's load_data() internally calls torch.load() without
+    weights_only=False. PyTorch 2.6+ changed that default to True,
+    which blocks loading PyG's Data/GlobalStorage objects unless
+    explicitly allowlisted -- PyGOD hasn't been updated for this yet.
+    We allowlist the specific class here since we trust PyGOD's official
+    data source; this is a compatibility fix, not a security bypass of
+    anything untrusted."""
     if dataset_name not in {"weibo", "reddit"}:
         raise ValueError(f"load_pygod_graph only handles 'weibo'/'reddit', got '{dataset_name}'")
 
+    import torch
+    try:
+        from torch_geometric.data.storage import GlobalStorage
+        torch.serialization.add_safe_globals([GlobalStorage])
+    except AttributeError:
+        # older torch versions without add_safe_globals don't have this
+        # restrictive default in the first place, so no fix needed
+        pass
+
     from pygod.utils import load_data
-    data = load_data(dataset_name)
+    try:
+        data = load_data(dataset_name)
+    except Exception as e:
+        if "weights_only" in str(e) or "Unpickling" in str(e):
+            # Fallback: temporarily patch torch.load to use weights_only=False,
+            # since we trust PyGOD's official data source and this is a
+            # version-compatibility issue, not an untrusted-file concern.
+            original_load = torch.load
+            torch.load = lambda *args, **kwargs: original_load(*args, **{**kwargs, "weights_only": False})
+            try:
+                data = load_data(dataset_name)
+            finally:
+                torch.load = original_load
+        else:
+            raise
 
     n_nodes = data.num_nodes
     G = nx.Graph()
