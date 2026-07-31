@@ -277,6 +277,15 @@ def degree_normalize_scores(graph, scores):
     return scores / np.log1p(degrees + 1e-8)
 
 
+# Degree normalization corrects hub-node score inflation, which matters
+# on DENSE graphs (Amazon, avg degree ~740) but actively HURTS on sparse
+# graphs where that bias doesn't exist (Reddit, avg degree ~15: raw
+# AUROC=0.577, degree-normalized AUROC=0.452 -- worse than chance).
+# This was an unverified assumption in the original single-dataset fix --
+# caught only when Reddit's AUROC dropped below 0.5 after normalization.
+DEGREE_NORM_BY_DATASET = {"amazon": True, "yelp": True, "tolokers": True, "reddit": False}
+
+
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
                          trim_pct=0.01):
@@ -400,12 +409,17 @@ def main():
     print(f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges, "
           f"{labels.sum()} fraud nodes ({labels.mean():.4f} rate)\n")
 
+    use_degree_norm = DEGREE_NORM_BY_DATASET.get(args.dataset, True)
+    print(f"Degree normalization: {'ON' if use_degree_norm else 'OFF'} "
+          f"(dataset-specific default -- see DEGREE_NORM_BY_DATASET)\n")
+
     all_results = []
     for condition in ["clean", "contaminated", "adversarial"]:
         print(f"=== Running {args.n_seeds} seeds for condition: {condition} ===")
         for seed in range(args.n_seeds):
             result = run_real_data_trial(graph, features, labels, condition,
-                                          args.alpha, seed, args.n_epochs, device)
+                                          args.alpha, seed, args.n_epochs, device,
+                                          use_degree_norm=use_degree_norm)
             if result is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
                 continue
