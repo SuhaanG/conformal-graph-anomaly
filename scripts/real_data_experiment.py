@@ -74,7 +74,7 @@ from scipy import stats
 from detector import train_dominant
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
-SUPPORTED_DATASETS = {"amazon", "yelp", "tolokers"}
+SUPPORTED_DATASETS = {"amazon", "yelp", "tolokers", "weibo", "reddit"}
 
 NODE_TYPE_BY_DATASET = {"amazon": "user", "yelp": "review"}
 
@@ -172,15 +172,62 @@ def load_tolokers_graph():
     return G, features, labels
 
 
+def load_pygod_graph(dataset_name):
+    """Loads Reddit or Weibo via PyGOD's load_data utility (returns PyG
+    format). Chosen as additional real datasets specifically because,
+    unlike Tolokers, these are NATIVE organic graph-anomaly-detection
+    benchmarks (not a repurposed heterophily-classification benchmark),
+    and DOMINANT is a standard baseline model in PyGOD's own benchmark
+    suite for exactly these datasets -- meaning the detector is expected
+    to function here, de-risking the assumption-mismatch failure found
+    on Tolokers (where AUROC was below chance due to heterophilous
+    structure, the opposite of what reconstruction-based GAD assumes).
+
+    Reddit: 10,984 nodes, ~168K edges, 3.3% anomaly rate (banned users).
+    Weibo: 8,405 nodes, ~408K edges, 10.3% anomaly rate (suspicious users).
+    Both smaller than Amazon (11,944 nodes), so no scalability risk."""
+    if dataset_name not in {"weibo", "reddit"}:
+        raise ValueError(f"load_pygod_graph only handles 'weibo'/'reddit', got '{dataset_name}'")
+
+    from pygod.utils import load_data
+    data = load_data(dataset_name)
+
+    n_nodes = data.num_nodes
+    G = nx.Graph()
+    G.add_nodes_from(range(n_nodes))
+    edge_index = data.edge_index.numpy()
+    edges = list(zip(edge_index[0].tolist(), edge_index[1].tolist()))
+    G.add_edges_from(edges)
+
+    features = data.x.numpy()
+    # PyGOD anomaly-detection datasets use data.y as the binary anomaly
+    # label directly (0=normal, 1=anomalous) for organic datasets like
+    # weibo/reddit (distinct from the multi-class injected-outlier label
+    # scheme PyGOD uses for injected/synthetic datasets like inj_cora).
+    labels = data.y.numpy()
+    labels = np.where(labels == 1, 1, 0)
+
+    # Same fix as every other real dataset: standardize features.
+    feat_mean = features.mean(axis=0, keepdims=True)
+    feat_std = features.std(axis=0, keepdims=True)
+    feat_std[feat_std == 0] = 1.0
+    features = (features - feat_mean) / feat_std
+
+    return G, features, labels
+
+
 def load_any_dataset(dataset_name):
     """Dispatch function: routes to the correct loader (DGL fraud-dataset
-    family for amazon/yelp, PyTorch Geometric for tolokers) based on which
-    library each dataset actually comes from. Use this instead of calling
-    load_fraud_graph directly when dataset_name could be any supported value."""
+    family for amazon/yelp, PyTorch Geometric for tolokers, PyGOD for
+    weibo/reddit) based on which library each dataset actually comes from.
+    Use this instead of calling a specific loader directly when
+    dataset_name could be any supported value."""
     if dataset_name in {"amazon", "yelp"}:
         return load_fraud_graph(dataset_name)
     elif dataset_name == "tolokers":
         return load_tolokers_graph()
+    elif dataset_name in {"weibo", "reddit"}:
+        return load_pygod_graph(dataset_name)
     else:
         raise ValueError(f"Unknown dataset '{dataset_name}'. Supported: {SUPPORTED_DATASETS}")
 
