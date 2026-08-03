@@ -75,6 +75,7 @@ def run_trial_with_separation_stat(p_an, alpha, seed, n_epochs, device, n_calib=
     order_by_exposure = np.argsort(-exposure)
     top_exposed = normal_idx[order_by_exposure]
     calib_idx = top_exposed[:n_calib]
+    mean_calib_exposure = exposure[order_by_exposure][:n_calib].mean()
 
     remaining_normal = np.setdiff1d(normal_idx, calib_idx)
     test_idx = np.concatenate([remaining_normal, anomaly_idx])
@@ -117,7 +118,7 @@ def run_trial_with_separation_stat(p_an, alpha, seed, n_epochs, device, n_calib=
 
     return {
         "p_an": p_an, "seed": seed,
-        "d_prime": d_prime, "auroc": auroc,
+        "d_prime": d_prime, "auroc": auroc, "mean_calib_exposure": mean_calib_exposure,
         "n_anomalies_below_p001": n_below_p001,
         "n_discoveries": int(n_discoveries), "power": power,
     }
@@ -174,6 +175,25 @@ def main():
     print(f"d_prime vs. n_discoveries: r={corr_dprime_disc:.4f} (p={p_dprime_disc:.4g})")
     corr_auroc_disc, p_auroc_disc = stats.pearsonr(aurocs, n_disc)
     print(f"AUROC vs. n_discoveries:   r={corr_auroc_disc:.4f} (p={p_auroc_disc:.4g})")
+
+    print("\n=== NEXT QUESTION: does calibration exposure explain residual variance beyond d_prime? ===")
+    exposures = np.array([r["mean_calib_exposure"] for r in all_results])
+    corr_exposure, p_exposure = stats.pearsonr(exposures, n_below)
+    print(f"mean_calib_exposure vs. n_anomalies_below_p001 (alone): r={corr_exposure:.4f} (p={p_exposure:.4g})")
+
+    # Multiple regression: n_below_p001 ~ d_prime + mean_calib_exposure
+    X = np.column_stack([d_primes, exposures, np.ones(len(d_primes))])
+    beta, residuals_sse, rank, sv = np.linalg.lstsq(X, n_below, rcond=None)
+    predictions = X @ beta
+    ss_res = np.sum((n_below - predictions) ** 2)
+    ss_tot = np.sum((n_below - n_below.mean()) ** 2)
+    r_squared_both = 1 - ss_res / ss_tot
+    r_squared_dprime_alone = corr_dprime ** 2
+
+    print(f"\nR^2 (d_prime alone): {r_squared_dprime_alone:.4f}")
+    print(f"R^2 (d_prime + mean_calib_exposure together): {r_squared_both:.4f}")
+    print(f"Improvement from adding calibration exposure: {r_squared_both - r_squared_dprime_alone:.4f}")
+    print(f"Regression coefficients: d_prime={beta[0]:.2f}, mean_calib_exposure={beta[1]:.2f}, intercept={beta[2]:.2f}")
 
     print("\nInterpretation: if d_prime (or AUROC) correlates with n_anomalies_below_p001 "
           "at r>0.85-0.90, that closes the mechanistic chain from raw, measurable detector "
