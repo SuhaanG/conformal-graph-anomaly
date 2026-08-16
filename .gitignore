@@ -10,3 +10,12 @@ data/processed/*
 results/logs/*
 !results/logs/.gitkeep
 .DS_Store
+
+# Dataset caches downloaded at runtime by the PyTorch Geometric / PyGOD /  DGL
+# loaders in scripts/real_data_experiment.py. These are re-downloadable derived
+# data, not source. tmp_tolokers/ was committed once by accident (17.1 MB) --
+# git keeps blobs in history forever, so every clone pays for it until the
+# history is rewritten separately.
+tmp_tolokers/
+tmp_*/
+*_data/
