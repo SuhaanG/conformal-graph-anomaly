@@ -81,6 +81,7 @@ import torch
 from scipy import stats
 
 from detector import train_dominant
+from detectors import score_nodes, available_detectors
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 from real_data_experiment import load_any_dataset, degree_normalize_scores, DEGREE_NORM_BY_DATASET
 
@@ -188,7 +189,8 @@ def evaluate(scores, frame, labels, alpha, anomaly_idx):
     return row, calib_scores
 
 
-def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=False):
+def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=False,
+                detector="dominant_ours", degree_norm_override=None):
     print(f"\n{'=' * 78}\n{dataset_name.upper()}\n{'=' * 78}")
     try:
         graph, features, labels = load_any_dataset(dataset_name)
@@ -196,7 +198,14 @@ def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=
         print(f"  SKIPPED ({type(e).__name__}: {e})")
         return []
 
-    use_degree_norm = DEGREE_NORM_BY_DATASET.get(dataset_name, True)
+    # The degree-norm decision in DEGREE_NORM_BY_DATASET was measured for OUR
+    # detector. A different scorer has a different score distribution and may
+    # need a different answer, so allow an explicit override rather than
+    # silently inheriting a setting that was never measured for it.
+    if degree_norm_override is None:
+        use_degree_norm = DEGREE_NORM_BY_DATASET.get(dataset_name, True)
+    else:
+        use_degree_norm = degree_norm_override
     normal_idx = np.where(labels == 0)[0]
     anomaly_idx = np.where(labels == 1)[0]
     exposure = compute_exposure(graph, normal_idx, labels)
@@ -205,9 +214,9 @@ def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=
 
     rows = []
     for seed in range(n_seeds):
-        raw, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
-                                verbose=False, device=device,
-                                use_sparse_prop=use_sparse_prop)
+        raw = score_nodes(detector, graph, features, labels, seed=seed,
+                          n_epochs=n_epochs, device=device,
+                          use_sparse_prop=use_sparse_prop)
         scores = degree_normalize_scores(graph, raw) if use_degree_norm else raw
 
         per_condition_scores = {}
@@ -218,7 +227,7 @@ def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=
                 print(f"    {cond:13s}: SKIPPED (clean pool < 20)")
                 continue
             row, calib_scores = evaluate(scores, frame, labels, alpha, anomaly_idx)
-            row.update(dataset=dataset_name, seed=seed, condition=cond)
+            row.update(dataset=dataset_name, detector=detector, seed=seed, condition=cond)
             rows.append(row)
             per_condition_scores[cond] = calib_scores
             print(f"    {cond:13s}: n_cal={row['n_calib']:5d}  calib_exposure={row['calib_mean_exposure']:.4f}  "
@@ -250,15 +259,29 @@ def main():
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--use_sparse_prop", action="store_true",
                         help="Required for yelp (n=45,954); see real_data_experiment.py.")
+    parser.add_argument("--detector", type=str, default="dominant_ours",
+                        help="Scorer to use. 'dominant_ours' is the frozen path and "
+                             "reproduces published numbers byte-for-byte; the PyGOD "
+                             "options use a CORRECT encoder (ours collapses to zero -- "
+                             "see DETECTOR_DIAGNOSTIC.md). See src/detectors.py.")
+    parser.add_argument("--degree_norm", type=str, default="auto",
+                        choices=["auto", "on", "off"],
+                        help="'auto' reads DEGREE_NORM_BY_DATASET, which was measured "
+                             "for dominant_ours only. Override when using another "
+                             "detector, and measure it first.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device: {device}  alpha: {args.alpha}")
+    dn_override = {"auto": None, "on": True, "off": False}[args.degree_norm]
+    print(f"device: {device}  alpha: {args.alpha}  detector: {args.detector}  "
+          f"degree_norm: {args.degree_norm}")
 
     all_rows = []
     for name in args.datasets:
         all_rows.extend(run_dataset(name, args.n_seeds, args.n_epochs, args.alpha, device,
-                                    use_sparse_prop=args.use_sparse_prop))
+                                    use_sparse_prop=args.use_sparse_prop,
+                                    detector=args.detector,
+                                    degree_norm_override=dn_override))
 
     if not all_rows:
         print("\nNo results.")
@@ -266,7 +289,8 @@ def main():
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, "calibration_distribution_check.csv")
+    suffix = "" if args.detector == "dominant_ours" else f"_{args.detector}"
+    csv_path = os.path.join(out_dir, f"calibration_distribution_check{suffix}.csv")
     with open(csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(all_rows[0].keys()))
         w.writeheader()

@@ -72,6 +72,7 @@ import torch
 from scipy import stats
 
 from detector import train_dominant
+from detectors import score_nodes
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 
 SUPPORTED_DATASETS = {"amazon", "yelp", "tolokers", "weibo", "reddit"}
@@ -306,10 +307,10 @@ DEGREE_NORM_BY_DATASET = {
 
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
-                         trim_pct=0.01, use_sparse_prop=False):
-    scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
-                                verbose=False, device=device, alpha=score_alpha,
-                                use_sparse_prop=use_sparse_prop)
+                         trim_pct=0.01, use_sparse_prop=False, detector="dominant_ours"):
+    scores = score_nodes(detector, graph, features, labels, seed=seed,
+                          n_epochs=n_epochs, device=device,
+                          use_sparse_prop=use_sparse_prop, score_alpha=score_alpha)
 
     if use_degree_norm:
         scores = degree_normalize_scores(graph, scores)
@@ -418,6 +419,14 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--detector", type=str, default="dominant_ours",
+                        help="Scorer to use; see src/detectors.py. 'dominant_ours' is "
+                             "the frozen path and reproduces published numbers "
+                             "byte-for-byte. PyGOD options use a CORRECT encoder.")
+    parser.add_argument("--degree_norm", type=str, default="auto",
+                        choices=["auto", "on", "off"],
+                        help="'auto' reads DEGREE_NORM_BY_DATASET, measured for "
+                             "dominant_ours only. Override for other detectors.")
     parser.add_argument("--use_sparse_prop", action="store_true",
                         help="Large-graph path, REQUIRED for yelp (n=45,954). The frozen "
                              "normalize_adj does two dense n x n numpy matmuls on CPU -- "
@@ -434,7 +443,9 @@ def main():
     print(f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges, "
           f"{labels.sum()} fraud nodes ({labels.mean():.4f} rate)\n")
 
-    use_degree_norm = DEGREE_NORM_BY_DATASET.get(args.dataset, True)
+    _dn = {"auto": None, "on": True, "off": False}[args.degree_norm]
+    use_degree_norm = (DEGREE_NORM_BY_DATASET.get(args.dataset, True)
+                       if _dn is None else _dn)
     print(f"Degree normalization: {'ON' if use_degree_norm else 'OFF'} "
           f"(dataset-specific default -- see DEGREE_NORM_BY_DATASET)\n")
 
@@ -445,7 +456,7 @@ def main():
             result = run_real_data_trial(graph, features, labels, condition,
                                           args.alpha, seed, args.n_epochs, device,
                                           use_degree_norm=use_degree_norm,
-                                    use_sparse_prop=args.use_sparse_prop)
+                                    use_sparse_prop=args.use_sparse_prop, detector=args.detector)
             if result is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
                 continue
@@ -455,7 +466,8 @@ def main():
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, f"real_data_experiment_{args.dataset}.csv")
+    suffix = "" if args.detector == "dominant_ours" else f"_{args.detector}"
+    csv_path = os.path.join(out_dir, f"real_data_experiment_{args.dataset}{suffix}.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_results[0].keys()))
         writer.writeheader()
