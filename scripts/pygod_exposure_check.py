@@ -121,18 +121,33 @@ def pygod_scores(graph, features, labels, epochs, seed, hid_dim=64):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_nodes", type=int, default=3000)
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--seeds", type=int, default=3)
-    parser.add_argument("--p_an", type=float, nargs="+", default=[0.002, 0.01, 0.05])
+    parser.add_argument("--n_nodes", type=int, default=2000)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--seeds", type=int, default=2)
+    parser.add_argument("--p_an", type=float, nargs="+", default=[0.002, 0.05])
+    parser.add_argument("--include_ours", action="store_true",
+                        help="Also retrain our detector on the same graphs. Off by "
+                             "default -- it roughly doubles runtime and we already "
+                             "have those numbers (exposure r = +0.015 / +0.003 / "
+                             "-0.006 at p_an = 0.002 / 0.01 / 0.05, n=3000).")
     args = parser.parse_args()
 
+    import time
+    # PyGOD's DotProductDecoder materializes a dense n x n h @ h.T every epoch and
+    # backprops through it. On CPU-only torch that is the entire cost, and it grows
+    # quadratically in n -- hence the smaller defaults here than elsewhere in the repo.
+    print(f"config: n_nodes={args.n_nodes} epochs={args.epochs} seeds={args.seeds} "
+          f"p_an={args.p_an} include_ours={args.include_ours}")
+    print(f"note: cost is dominated by a dense {args.n_nodes}x{args.n_nodes} decoder "
+          f"per epoch on CPU; expect minutes per model.\n", flush=True)
+
     print(f"{'detector':10} {'p_an':>6} {'AUROC':>8} {'Z std':>10} {'mean exp':>9} "
-          f"{'exposure r':>11} {'p-value':>10}")
+          f"{'exposure r':>11} {'p-value':>10}", flush=True)
     rows = []
     for p_an in args.p_an:
         acc = {"pygod": [], "ours": []}
         for seed in range(args.seeds):
+            t0 = time.time()
             cfg = GraphGenConfig(n_nodes=args.n_nodes, p_aa=0.3, p_an=p_an, p_nn=0.005,
                                  feature_shift=1.0, n_anomaly_clusters=3, random_state=seed)
             graph, features, labels = ContaminatedGraphGenerator(cfg).generate()
@@ -142,18 +157,25 @@ def main():
             ps, pZ = pygod_scores(graph, features, labels, args.epochs, seed)
             r, p = stats.pearsonr(exposure, ps[normal_idx])
             acc["pygod"].append((auroc(ps, labels), pZ.std(), exposure.mean(), r, p))
+            # per-seed progress: a full p_an group can take many minutes, and silence
+            # for that long is indistinguishable from a hang.
+            print(f"  .. p_an={p_an:.3f} seed={seed}  pygod AUROC={auroc(ps, labels):.4f} "
+                  f"Zstd={pZ.std():.6f} r={r:+.4f}  [{time.time()-t0:.0f}s]", flush=True)
 
-            os_, model = train_dominant(graph, features, n_epochs=args.epochs, seed=seed,
+            if args.include_ours:
+                os_, _ = train_dominant(graph, features, n_epochs=args.epochs, seed=seed,
                                         verbose=False, use_sparse_prop=True)
-            r2, p2 = stats.pearsonr(exposure, os_[normal_idx])
-            acc["ours"].append((auroc(os_, labels), 0.0, exposure.mean(), r2, p2))
+                r2, p2 = stats.pearsonr(exposure, os_[normal_idx])
+                acc["ours"].append((auroc(os_, labels), 0.0, exposure.mean(), r2, p2))
 
-        for name in ("pygod", "ours"):
+        names = ("pygod", "ours") if args.include_ours else ("pygod",)
+        for name in names:
             a = np.array(acc[name])
             print(f"{name:10} {p_an:6.3f} {a[:,0].mean():8.4f} {a[:,1].mean():10.6f} "
-                  f"{a[:,2].mean():9.4f} {a[:,3].mean():+11.4f} {a[:,4].mean():10.4f}")
+                  f"{a[:,2].mean():9.4f} {a[:,3].mean():+11.4f} {a[:,4].mean():10.4f}",
+                  flush=True)
             rows.append((name, p_an, a[:, 0].mean(), a[:, 3].mean(), a[:, 4].mean()))
-        print()
+        print(flush=True)
 
     pg = [r for r in rows if r[0] == "pygod"]
     best_auroc = max(r[2] for r in pg)
