@@ -283,7 +283,17 @@ def degree_normalize_scores(graph, scores):
 # AUROC=0.577, degree-normalized AUROC=0.452 -- worse than chance).
 # This was an unverified assumption in the original single-dataset fix --
 # caught only when Reddit's AUROC dropped below 0.5 after normalization.
-DEGREE_NORM_BY_DATASET = {"amazon": True, "yelp": True, "tolokers": True, "reddit": False}
+DEGREE_NORM_BY_DATASET = {
+    "amazon": True,
+    "yelp": True,
+    "tolokers": True,
+    "reddit": False,
+    # measured, not inherited: raw=0.773 +/- 0.003 vs degree_norm=0.843 +/- 0.000
+    # over 3 seeds (scripts/degree_norm_diagnostic.py). Weibo is dense
+    # (mean degree 89.8) so normalization helps here, unlike sparse Reddit
+    # where it pushed AUROC below chance.
+    "weibo": True,
+}
 
 
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
