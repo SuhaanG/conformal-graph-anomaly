@@ -45,6 +45,39 @@ def normalize_adj(A: np.ndarray) -> torch.Tensor:
     return torch.tensor(A_norm, dtype=torch.float32)
 
 
+def normalize_adj_fast(A: np.ndarray, device: str = "cpu") -> torch.Tensor:
+    """O(n^2) equivalent of normalize_adj, for large graphs.
+
+    normalize_adj materializes D^-1/2 as a dense n x n diagonal matrix and does
+    two dense n x n @ n x n matmuls, costing O(n^3). Since D is diagonal, the
+    product D^-1/2 (A+I) D^-1/2 is exactly a row-then-column broadcast scale,
+    which is O(n^2). At Yelp scale (n=45,954) that is ~3.9e14 flops vs ~4.2e9 --
+    roughly 65 minutes per call vs seconds.
+
+    Mathematically equivalent to normalize_adj; asserted directly against it in
+    tests/test_normalize_equivalence.py. The remaining differences are
+    cost-only: work happens in float32 (the dtype normalize_adj returns anyway)
+    and self-loops are added in place instead of via np.eye, which avoids two
+    extra n x n temporaries -- at Yelp scale that alone is ~34 GB of CPU RAM.
+
+    normalize_adj is deliberately left untouched: every already-validated
+    result in this project was produced through it.
+    """
+    A = np.array(A, dtype=np.float32, copy=True)
+    np.fill_diagonal(A, A.diagonal() + 1.0)  # A_hat = A + I, without np.eye
+
+    deg = A.sum(axis=1)
+    deg_inv_sqrt = np.zeros_like(deg)
+    nonzero = deg > 0
+    deg_inv_sqrt[nonzero] = np.power(deg[nonzero], -0.5)
+
+    A_t = torch.from_numpy(A).to(device)
+    d_t = torch.from_numpy(deg_inv_sqrt).to(device)
+    A_t.mul_(d_t.unsqueeze(1))  # row scale   -> D^-1/2 @ A_hat
+    A_t.mul_(d_t.unsqueeze(0))  # column scale -> ... @ D^-1/2
+    return A_t
+
+
 def normalize_adj_sparse(graph: nx.Graph, device: str) -> torch.Tensor:
     """SCALABLE version of normalize_adj: builds the same D^-1/2 (A+I) D^-1/2
     propagation matrix but as a torch sparse tensor, avoiding the O(n^2)
@@ -140,6 +173,7 @@ def train_dominant(
     device: str = "cpu",
     seed: int = 0,
     verbose: bool = True,
+    use_sparse_prop: bool = False,
 ):
     """Trains DOMINANT on a single graph and returns per-node anomaly scores.
 
@@ -148,15 +182,35 @@ def train_dominant(
     favors attribute error since it's typically more informative; we keep it
     tunable since this parameter itself is a source of training randomness
     worth stress-testing later (ties back to the seed-instability motivation).
+
+    use_sparse_prop: opt-in large-graph path, needed for Yelp (n=45,954) and
+    off by default so every existing validated result reproduces byte for byte.
+    It changes only HOW the propagation matrix is built, never the model, the
+    loss, or the scoring:
+      - the propagation matrix becomes a torch sparse tensor via
+        normalize_adj_sparse (same D^-1/2 (A+I) D^-1/2 normalization, verified
+        equivalent in tests/test_normalize_equivalence.py), which at Yelp scale
+        is ~46 MB instead of 8.45 GB and skips normalize_adj's two dense
+        n x n @ n x n matmuls (~65 min/call at that size);
+      - the dense adjacency is materialized in float32 rather than float64,
+        halving peak CPU RAM (16.9 GB -> 8.45 GB at Yelp scale).
+    The structure DECODER stays dense either way -- that is what keeps the
+    anomaly scores valid, and is precisely what train_dominant_scalable below
+    got wrong.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     n = graph.number_of_nodes()
-    A = nx.to_numpy_array(graph, nodelist=range(n))
-    A_norm = normalize_adj(A).to(device)
+    if use_sparse_prop:
+        A = nx.to_numpy_array(graph, nodelist=range(n), dtype=np.float32)
+        A_norm = normalize_adj_sparse(graph, device)
+        A_target = torch.from_numpy(A).to(device)
+    else:
+        A = nx.to_numpy_array(graph, nodelist=range(n))
+        A_norm = normalize_adj(A).to(device)
+        A_target = torch.tensor(A, dtype=torch.float32).to(device)
     X = torch.tensor(features, dtype=torch.float32).to(device)
-    A_target = torch.tensor(A, dtype=torch.float32).to(device)
 
     model = DOMINANT(in_dim=features.shape[1], hidden_dim=hidden_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
