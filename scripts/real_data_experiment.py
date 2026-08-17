@@ -285,7 +285,15 @@ def degree_normalize_scores(graph, scores):
 # caught only when Reddit's AUROC dropped below 0.5 after normalization.
 DEGREE_NORM_BY_DATASET = {
     "amazon": True,
-    "yelp": True,
+    # CORRECTED 2026-08-17. Was True, inherited by analogy to Amazon back when
+    # Yelp could not actually be run (it was excluded for compute cost, so the
+    # setting was never tested). Now that the sparse-propagation path makes Yelp
+    # runnable, degree_norm_diagnostic.py measures normalization as HURTING
+    # here, so the analogy was wrong. Note the paper's detector-protocol section
+    # still asserts the correction was applied to "Amazon and Yelp" on the
+    # strength of that untested analogy -- that sentence needs fixing too.
+    # TODO: paste the measured raw vs degree_norm AUROCs into this comment.
+    "yelp": False,
     "tolokers": True,
     "reddit": False,
     # measured, not inherited: raw=0.773 +/- 0.003 vs degree_norm=0.843 +/- 0.000
