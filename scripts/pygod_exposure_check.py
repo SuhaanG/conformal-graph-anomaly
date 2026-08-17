@@ -91,17 +91,22 @@ def to_pyg(graph, features, labels):
                 y=torch.tensor(labels, dtype=torch.long))
 
 
-def pygod_scores(graph, features, labels, epochs, seed, hid_dim=64):
+def pygod_scores(graph, features, labels, epochs, seed, hid_dim=64, device="cpu"):
     """Trains pygod.nn.DOMINANTBase full-batch and returns per-node anomaly
     scores using PyGOD's own loss as the score, which is what its detector
-    reports (double_recon_loss returns a per-node value)."""
+    reports (double_recon_loss returns a per-node value).
+
+    The dominant cost is DotProductDecoder materializing a dense n x n h @ h.T
+    every epoch and backpropagating through it, so this benefits enormously
+    from running on GPU -- pass device="cuda" when one is available."""
     from pygod.nn import DOMINANTBase
     torch.manual_seed(seed)
     data = to_pyg(graph, features, labels)
     DOMINANTBase.process_graph(data)
+    data = data.to(device)
 
     model = DOMINANTBase(in_dim=features.shape[1], hid_dim=hid_dim, num_layers=4,
-                         dropout=0.0, act=torch.nn.functional.relu)
+                         dropout=0.0, act=torch.nn.functional.relu).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=0.01)
     model.train()
     for _ in range(epochs):
@@ -130,16 +135,24 @@ def main():
                              "default -- it roughly doubles runtime and we already "
                              "have those numbers (exposure r = +0.015 / +0.003 / "
                              "-0.006 at p_an = 0.002 / 0.01 / 0.05, n=3000).")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Defaults to cuda when available. The dense n x n "
+                             "decoder is the whole cost, so GPU matters a lot here.")
     args = parser.parse_args()
 
     import time
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {device}"
+          + (f"  ({torch.cuda.get_device_name(0)})" if device.startswith("cuda") else ""))
     # PyGOD's DotProductDecoder materializes a dense n x n h @ h.T every epoch and
-    # backprops through it. On CPU-only torch that is the entire cost, and it grows
-    # quadratically in n -- hence the smaller defaults here than elsewhere in the repo.
+    # backprops through it. That is the entire cost and it grows quadratically in n,
+    # so n_nodes is the knob to turn if this is slow. Defaults here are smaller than
+    # elsewhere in the repo because the original settings were unusably slow on CPU.
     print(f"config: n_nodes={args.n_nodes} epochs={args.epochs} seeds={args.seeds} "
           f"p_an={args.p_an} include_ours={args.include_ours}")
-    print(f"note: cost is dominated by a dense {args.n_nodes}x{args.n_nodes} decoder "
-          f"per epoch on CPU; expect minutes per model.\n", flush=True)
+    print(f"note: cost is a dense {args.n_nodes}x{args.n_nodes} decoder per epoch. "
+          f"On GPU this is fast, so raise --n_nodes/--epochs/--seeds toward the "
+          f"repo-standard settings if you want tighter estimates.\n", flush=True)
 
     print(f"{'detector':10} {'p_an':>6} {'AUROC':>8} {'Z std':>10} {'mean exp':>9} "
           f"{'exposure r':>11} {'p-value':>10}", flush=True)
@@ -154,7 +167,7 @@ def main():
             normal_idx = np.where(labels == 0)[0]
             exposure = compute_exposure(graph, normal_idx, labels)
 
-            ps, pZ = pygod_scores(graph, features, labels, args.epochs, seed)
+            ps, pZ = pygod_scores(graph, features, labels, args.epochs, seed, device=device)
             r, p = stats.pearsonr(exposure, ps[normal_idx])
             acc["pygod"].append((auroc(ps, labels), pZ.std(), exposure.mean(), r, p))
             # per-seed progress: a full p_an group can take many minutes, and silence
@@ -164,7 +177,7 @@ def main():
 
             if args.include_ours:
                 os_, _ = train_dominant(graph, features, n_epochs=args.epochs, seed=seed,
-                                        verbose=False, use_sparse_prop=True)
+                                        verbose=False, use_sparse_prop=True, device=device)
                 r2, p2 = stats.pearsonr(exposure, os_[normal_idx])
                 acc["ours"].append((auroc(os_, labels), 0.0, exposure.mean(), r2, p2))
 
