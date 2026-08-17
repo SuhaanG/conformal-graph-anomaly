@@ -38,9 +38,9 @@ plus two methodological pitfalls (section 6). See section 7 for the rewrite.
 
 | | Status |
 |---|---|
-| Contamination-robustness claim | **DEAD.** Disproven on 5 real datasets and under a correct detector at AUROC 1.00 |
+| Contamination-robustness claim | **DEAD.** Disproven on 5 real datasets, under a correct detector at AUROC 1.00, and across 5 detectors spanning 3 families (section 4.10) |
 | "Fails into silence" claim | **SUSPECT.** Probably an artifact of a broken detector. Re-test or drop |
-| Discovery-threshold proposition | **STRONG.** 15/15 across 5 real datasets it was never fitted to |
+| Discovery-threshold proposition | **NEEDS RESTATING.** Valid as a *sufficient* condition; the bidirectional reading behind the old "15/15" is falsified (section 5.5) |
 | Methodological pitfalls | **REAL.** Two of them, both reproducible |
 | All real-data FDR numbers | **VALID** as measured, but produced by a detector whose graph pathway is inert |
 | Synthetic study | **COMPROMISED.** Detector broken; generator trivially easy for a working one |
@@ -160,6 +160,64 @@ Confirmed by the Reddit control (`degree_norm=False`): raw and as-used
 correlations are **identical** there (+0.0220 both), while on Amazon
 normalization turns **-0.0621 into +0.2697** -- a sign flip and 4x magnitude
 change.
+
+### 4.10 The decisive test: five detectors, three families
+
+Goals 1 and 2 from the old section 9.2 are complete. `src/detectors.py` runs the
+study under five scorers; all five work (AUROC on a 1000-node synthetic graph):
+
+| detector | AUROC | family |
+|---|---|---|
+| `dominant_pygod` | 0.9707 | reconstruction, attribute + structure |
+| `dominant_ours` | 0.9230 | reconstruction (broken encoder) |
+| `ocgnn` | 0.8973 | **one-class** |
+| `anomalydae` | 0.7238 | dual autoencoder |
+| `gae` | 0.6212 | reconstruction, attribute only |
+
+Ran the full matrix on amazon/reddit/weibo/tolokers, 3 seeds. The clean
+comparison is **contaminated vs adversarial** -- identical `n_cal` by
+construction, differing only in which nodes were selected. Direction of change
+in `clear_anom`, which is what determines discovery:
+
+| dataset | dominant_ours | dominant_pygod | ocgnn | anomalydae | gae |
+|---|---|---|---|---|---|
+| amazon | DOWN | same | same | **UP** | **UP** |
+| reddit | same | same | same | **UP** | same |
+| weibo | DOWN | same | same | same | same |
+| tolokers | same | same | **UP** | same | DOWN |
+
+**Across 20 detector-dataset cells: 13 identical, 4 UP, 3 DOWN.**
+
+Contamination predicts DOWN everywhere -- adversarial calibration should raise
+calibration scores and make anomalies harder to clear. It occurs in 3 of 20,
+while the *opposite* occurs in 4 of 20. **The direction is a coin flip.**
+
+This is a stronger argument than "the effect is small". A real mechanism would
+have a consistent sign across scorers, because selecting the most anomaly-exposed
+nodes should degrade calibration the same way regardless of what computes the
+score. Instead the sign depends on the detector, which is the signature of a
+score-distribution artifact rather than contamination.
+
+Note also Tolokers, where adversarial calibration reaches **54% anomalous
+neighbours** -- the most extreme contamination anywhere in this project.
+`clear_anom` there is identical across all four PyGOD detectors
+(0.0500 / 0.0126 vs 0.0133 / 0.0035 / 0.0025 vs 0.0023).
+
+### 4.11 Better AUROC does not mean better discovery
+
+On Amazon, `dominant_pygod` (AUROC 0.9707) produces **zero** discoveries under
+contaminated and adversarial calibration -- `clear_anom = 0.0000` exactly, not a
+single anomaly beats the calibration maximum. Our broken detector (AUROC 0.9230)
+produced ~64.
+
+The working detector has a heavier normal-score tail, so with 4,000 calibration
+nodes you capture normals that no anomaly exceeds. Ranking quality improved;
+conformal discovery collapsed.
+
+This is a clean, quotable result and it *supports* the paper's thesis: discovery
+is governed by clearance behaviour in the extreme tail, not by ranking quality.
+It also means AUROC is the wrong summary statistic for this pipeline, which is a
+practical point worth making explicitly.
 
 ### 4.6 Why the mechanism is severed
 
@@ -290,6 +348,55 @@ Weibo are clearest: clean discovers while the others do not, purely because
 clean has a larger pool (9755 and 5620 vs 4000). Yelp shows it as a graded
 effect: clean has the *smallest* pool (926), hence the highest p-value floor,
 hence fewest discoveries and the most conservative FDR (0.018 vs 0.045).
+
+### 5.5 IMPORTANT: the bidirectional reading is falsified
+
+**Read this before using the 15/15 table.**
+
+The proposition as written in `theory/` is a **sufficient** condition: *if*
+`pi_1 * c >= 1/(alpha(n+1))`, at least one discovery occurs. It never claimed
+the converse.
+
+The 15/15 table above used it **bidirectionally**, predicting "none" whenever
+`clears < needs`. That direction is now falsified. Running the same check under
+`dominant_pygod`:
+
+| dataset | condition | n_cal | m | needs | clears | predicted | observed |
+|---|---|---|---|---|---|---|---|
+| amazon | clean | 267 | 5821 | 218 | 134 | none | **3,420** |
+
+Off by a factor of 25. The mechanism: BH rejects at rank *k* where
+`p_(k) <= alpha*k/m`. At m=5821 and alpha=0.1, rank 3420 admits p-values up to
+**0.0588**, while the floor is `1/268 = 0.0037`. Thousands of points sitting
+*between* the floor and that threshold get rejected. The floor-based condition
+only ever governed points AT the floor.
+
+**Worse, the failures are seed-unstable.** Amazon clean under `ocgnn`, identical
+configuration, three seeds:
+
+| seed | clear_anom | n_disc |
+|---|---|---|
+| 0 | 0.0877 | **424** |
+| 1 | 0.0889 | **0** |
+| 2 | 0.0828 | **0** |
+
+Clearance essentially constant (72-73 anomalies against a threshold of 218), yet
+discoveries swing from 424 to zero. Near the boundary, whether discovery happens
+is governed by the *bulk* of the p-value distribution, which varies seed to seed.
+
+Why the old 15/15 held: under `dominant_ours` the score distributions happened
+to make both readings coincide. **Adding a second detector broke it immediately**
+-- which is exactly what multi-detector validation is for, and is itself an
+argument for having done it.
+
+**What this means for the paper.** Either:
+  (a) restate the result honestly as "predicts discovery correctly in N cases",
+      dropping the negative direction, which is weaker but true; or
+  (b) strengthen the proposition to account for non-floor rejections, which
+      would be a real theoretical contribution and is the thing most likely to
+      lift this paper a venue tier (old section 9.2 item 3).
+
+Do not ship the bidirectional framing.
 
 ### 5.4 Correction needed in the theory doc
 
@@ -529,15 +636,16 @@ re-running everything under a correct detector. Months, not weeks.
 
 Ranked by impact:
 
-1. **Re-run everything with PyGOD's DOMINANT.** Every current result was produced
-   by a detector whose graph pathway is inert. PyGOD's works. This makes the
-   whole study trustworthy and gives you a second detector, addressing the
-   single-detector objection. Now cheap on the H200.
-2. **Add 2-3 more detectors.** PyGOD ships AnomalyDAE, CoLA, GAAN, GUIDE and
-   others behind the same API. The proposition is detector-agnostic in principle
-   -- validating it across 4-5 detectors x 5 datasets (60-75 cells) would be a
-   genuinely strong empirical paper and is mostly compute, not new design.
-3. **Formalize the proposition into a theorem** with stated conditions and a
+1. ~~**Re-run everything with PyGOD's DOMINANT.**~~ **DONE** -- see 4.10/4.11.
+2. ~~**Add 2-3 more detectors.**~~ **DONE** -- five detectors across three
+   families now run via `src/detectors.py`. Remaining: Yelp under each detector
+   (needs `--use_sparse_prop`), which would take the matrix to 25 cells per
+   condition.
+3. **Formalize the proposition into a theorem** -- now the single highest-value
+   item, and more urgent than before: 5.5 shows the current statement cannot
+   predict absence of discovery, and fixing that IS the theoretical contribution.
+   Specifically, extend beyond "can any floor-tied point be rejected" to a
+   condition covering rejections from the bulk of the p-value distribution. with stated conditions and a
    proof, ideally extended beyond "can any discovery occur" to a bound on
    expected discovery count. This is the only thing that addresses the depth
    objection.
