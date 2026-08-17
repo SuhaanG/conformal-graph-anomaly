@@ -125,16 +125,18 @@ def main():
     if backbone is not None:
         show_source(type(backbone).forward, f"backbone {type(backbone).__name__}.forward")
 
+    # double_recon_loss needs the DENSE adjacency as its `s` argument. PyGOD
+    # supplies it via DOMINANTBase.process_graph, which sets data.s -- use that
+    # rather than building it by hand, so the loss matches PyGOD's exactly.
+    DOMINANTBase.process_graph(data)
+
     opt = torch.optim.Adam(model.parameters(), lr=0.01)
     model.train()
     for epoch in range(args.epochs):
         opt.zero_grad()
         out = model(data.x, data.edge_index)
         x_, s_ = out[0], out[1]
-        loss = model.loss_func(data.x, x_, None, s_) if hasattr(model, "loss_func") else None
-        if loss is None:
-            print("  no loss_func on the module; cannot train identically to PyGOD")
-            return
+        loss = model.loss_func(data.x, x_, data.s, s_)
         loss = loss.mean() if loss.dim() > 0 else loss
         loss.backward()
         opt.step()
