@@ -68,6 +68,9 @@ PYGOD_SPECS = {
         # needs num_nodes as well as in_dim -- its structure decoder is sized by it
         kwargs=lambda in_dim, n: dict(in_dim=in_dim, num_nodes=n, emb_dim=64,
                                       hid_dim=64, dropout=0.0),
+        # its forward is forward(x, edge_index, batch_size); passing the full
+        # node count makes it full-batch, matching every other detector here
+        forward_extra=lambda data: (data.num_nodes,),
     ),
     "gae": dict(
         cls="GAEBase", mode="recon_x",
@@ -185,17 +188,22 @@ def _train_pygod(name, graph, features, labels, seed, n_epochs, device, lr=0.01)
             f"Signature is {inspect.signature(Base.__init__)}. Fix PYGOD_SPECS. ({e})"
         ) from e
 
+    # some forwards take extra positional args (AnomalyDAE wants batch_size)
+    extra = spec.get("forward_extra", lambda d: ())(data)
+
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     model.train()
     for _ in range(n_epochs):
         opt.zero_grad()
-        loss, _ = _per_node(spec["mode"], model, data, model(data.x, data.edge_index))
+        loss, _ = _per_node(spec["mode"], model, data,
+                            model(data.x, data.edge_index, *extra))
         loss.backward()
         opt.step()
 
     model.eval()
     with torch.no_grad():
-        _, per = _per_node(spec["mode"], model, data, model(data.x, data.edge_index))
+        _, per = _per_node(spec["mode"], model, data,
+                           model(data.x, data.edge_index, *extra))
     scores = per.detach().cpu().numpy()
     if scores.ndim > 1:
         scores = scores.reshape(scores.shape[0], -1).mean(axis=1)
