@@ -101,9 +101,26 @@ def run_trial_with_clearance_rate(p_an, alpha, seed, n_epochs, device, n_calib=2
     n_true_found = np.sum(discoveries & (test_labels == 1))
     power = n_true_found / len(anomaly_idx) if len(anomaly_idx) > 0 else 0.0
 
+    # Required clearance rate c*, computed from THIS trial's observed test-set
+    # composition rather than a hardcoded constant.
+    #
+    # pi_1 must be the TEST-SET anomaly prevalence m_1/m, not the graph-wide
+    # anomaly rate. They are not the same here and the difference is not small:
+    # calibration removes n_calib NORMAL nodes from the pool, so the test set is
+    # enriched in anomalies (5.00% graph-wide -> 6.14% in-test at n_calib=2794).
+    # Using the graph-wide rate overstates c* by ~23% on synthetic and by ~2x on
+    # the real datasets, where max_normal_test caps normals at 5000 while every
+    # anomaly is retained.
+    m = len(test_idx)
+    m_1 = int((test_labels == 1).sum())
+    pi_1_test = m_1 / m if m > 0 else 0.0
+    required_c_star = (1.0 / (alpha * (n_calib + 1) * pi_1_test)) if pi_1_test > 0 else float("inf")
+
     return {
         "p_an": p_an, "seed": seed, "mean_calib_exposure": mean_calib_exposure,
         "clearance_rate_c": clearance_rate_c,
+        "n_calib": n_calib, "m_test": m, "m_1": m_1, "pi_1_test": pi_1_test,
+        "required_c_star": required_c_star,
         "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
     }
 
