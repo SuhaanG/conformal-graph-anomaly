@@ -288,9 +288,10 @@ DEGREE_NORM_BY_DATASET = {"amazon": True, "yelp": True, "tolokers": True, "reddi
 
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
-                         trim_pct=0.01):
+                         trim_pct=0.01, use_sparse_prop=False):
     scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
-                                verbose=False, device=device, alpha=score_alpha)
+                                verbose=False, device=device, alpha=score_alpha,
+                                use_sparse_prop=use_sparse_prop)
 
     if use_degree_norm:
         scores = degree_normalize_scores(graph, scores)
@@ -399,6 +400,12 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--use_sparse_prop", action="store_true",
+                        help="Large-graph path, REQUIRED for yelp (n=45,954). The frozen "
+                             "normalize_adj does two dense n x n numpy matmuls on CPU -- "
+                             "~65 min per call at that size, and a GPU does not help since "
+                             "it is numpy. Off by default so every existing result "
+                             "reproduces byte-identically.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -419,7 +426,8 @@ def main():
         for seed in range(args.n_seeds):
             result = run_real_data_trial(graph, features, labels, condition,
                                           args.alpha, seed, args.n_epochs, device,
-                                          use_degree_norm=use_degree_norm)
+                                          use_degree_norm=use_degree_norm,
+                                    use_sparse_prop=args.use_sparse_prop)
             if result is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
                 continue

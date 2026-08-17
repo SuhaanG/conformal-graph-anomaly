@@ -188,7 +188,7 @@ def evaluate(scores, frame, labels, alpha, anomaly_idx):
     return row, calib_scores
 
 
-def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device):
+def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device, use_sparse_prop=False):
     print(f"\n{'=' * 78}\n{dataset_name.upper()}\n{'=' * 78}")
     try:
         graph, features, labels = load_any_dataset(dataset_name)
@@ -206,7 +206,8 @@ def run_dataset(dataset_name, n_seeds, n_epochs, alpha, device):
     rows = []
     for seed in range(n_seeds):
         raw, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
-                                verbose=False, device=device)
+                                verbose=False, device=device,
+                                use_sparse_prop=use_sparse_prop)
         scores = degree_normalize_scores(graph, raw) if use_degree_norm else raw
 
         per_condition_scores = {}
@@ -247,6 +248,8 @@ def main():
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--use_sparse_prop", action="store_true",
+                        help="Required for yelp (n=45,954); see real_data_experiment.py.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -254,7 +257,8 @@ def main():
 
     all_rows = []
     for name in args.datasets:
-        all_rows.extend(run_dataset(name, args.n_seeds, args.n_epochs, args.alpha, device))
+        all_rows.extend(run_dataset(name, args.n_seeds, args.n_epochs, args.alpha, device,
+                                    use_sparse_prop=args.use_sparse_prop))
 
     if not all_rows:
         print("\nNo results.")
