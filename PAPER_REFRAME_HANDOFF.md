@@ -45,7 +45,7 @@ plus two methodological pitfalls (section 6). See section 7 for the rewrite.
 | All real-data FDR numbers | **VALID** as measured, but produced by a detector whose graph pathway is inert |
 | Synthetic study | **COMPROMISED.** Detector broken; generator trivially easy for a working one |
 | Current paper draft | **NOT SUBMITTABLE.** Contains factual errors, see section 6.4 |
-| Venue | arXiv now; then a workshop or COPA. Not IEEE at current scope (section 8) |
+| Venue | NeurIPS Datasets & Benchmarks, then COPA 2027. Not IEEE at current scope. arXiv blocked -- no endorsement (section 8) |
 
 ---
 
@@ -575,62 +575,164 @@ Graphs? A Joint Condition on Base Rate, Calibration Size, and Detector Quality*
 
 ## 8. Venue
 
-**Not IEEE at current scope.** The objection that caps us is not evidence, it is
-depth: the proposition is a few lines of algebra combining the p-value floor with
-the BH rule. Correct, useful, well-validated -- and a reviewer will still call it
-an observation rather than a theorem. More validation cells improve evidence
-without making the result deeper.
+### 8.1 Why IEEE is out at current scope
 
-Both routes to TKDE are closed:
-- *"A widely-used detector is silently broken"* -- closed, PyGOD is correct (4.7)
-- *"Contamination is real and we characterize it"* -- closed, null holds under a
-  correct detector (4.7)
+The objection that caps us is not evidence, it is **depth**. The proposition is a
+few lines of algebra combining the conformal p-value floor with the BH rejection
+rule. Correct, useful, extensively validated -- and a reviewer will still call it
+an observation rather than a theorem. The multi-detector work (4.10) improved the
+*evidence* considerably without making the *result* deeper, and 5.5 shows the one
+predictive use we were making of it does not hold.
 
-**Ranked recommendation:**
+Both routes to a top IEEE journal are now explicitly closed:
 
-1. **arXiv, immediately.** Free, citable, blocks nothing.
-2. **NeurIPS Datasets & Benchmarks Track.** Best fit for the pitfalls framing;
-   ~25-30% acceptance; CV line reads "NeurIPS". Precedent: `tang2023gadbench`
-   in our own bibliography was published there.
-3. **AISTATS / UAI.** Right audience for the statistical core -- they will
-   actually engage with the p-value floor argument, PRDS testing, and the e-BH
-   appendix. ~10-20% for this paper.
-4. **COPA** (Symposium on Conformal and Probabilistic Prediction). Best topical
-   fit; `clarkson2024contamination` in our bib was published there. PMLR
-   proceedings, no fee. **COPA 2026 closed (papers May 20, posters Aug 1);
-   COPA 2027 ~May 2027.**
-5. **SDM** -- where DOMINANT itself was published. ~20-25%.
-6. IEEE TNSE / TAI / TETCI / TCSS -- ~20-30% each after the rewrite. TNSE has the
-   best scope fit of the IEEE options.
+- *"A widely-used detector is silently broken"* -- closed. PyGOD's implementation
+  is correct; the bug was ours (4.7).
+- *"Contamination is real and we characterize it"* -- closed. The null holds under
+  a correct detector at AUROC 1.00, and across five detectors spanning three
+  families (4.10).
 
-Note that in CS, conferences generally outrank mid-tier journals, so options 2-5
-are *both* more prestigious and better-fitting than the IEEE journals.
+IEEE TNSE / TAI / TETCI / TCSS would each sit around 20-30% after an honest
+rewrite, TNSE having the best scope fit. But see 8.2 -- they are not the right
+target anyway.
 
-### What would actually reach IEEE Transactions level
+### 8.2 In CS, conferences outrank mid-tier journals
 
-See section 9.2. Short version: multiple detectors, a formalized theorem, and
-re-running everything under a correct detector. Months, not weeks.
+Field-specific and worth stating plainly, because it inverts the usual intuition.
+A paper at NeurIPS / KDD / ICDM / AISTATS carries more weight with CS faculty and
+admissions committees than most IEEE Transactions other than TPAMI and TKDE. The
+conference options below are therefore **both** more prestigious **and** better
+fitting than the IEEE journals we spent time considering. Chasing an IEEE
+Transactions here optimizes for the wrong thing.
 
----
+Most workshops and some tracks are also **non-archival**, so publishing there does
+not block an expanded version going to a journal or COPA later. That makes the
+sequencing low-risk: publish the current scope somewhere real, get reviewer
+feedback, expand if the theorem works out.
+
+### 8.3 Primary target: NeurIPS Datasets and Benchmarks Track
+
+**This is a separate track from the NeurIPS main track**, with its own call,
+deadline and reviewer pool. Same conference, same proceedings, "NeurIPS" on the
+CV -- but you submit to it explicitly.
+
+The distinction matters for us:
+
+- **Main track** wants a novel method or a theoretical result. We have neither
+  right now. Realistically under 5%.
+- **Datasets and Benchmarks** exists for evaluation, measurement and resource
+  contributions, where "here is a systematic measurement problem, here is the
+  mechanism, here is a diagnostic" is the contribution rather than a consolation
+  prize. Roughly 25-30% acceptance.
+
+Precedent: `tang2023gadbench`, already in our bibliography, was published on this
+track. GAD evaluation work belongs there.
+
+**How to frame it for best fit.** D&B leans toward submissions that ship a
+reusable artifact -- a dataset, a benchmark, an evaluation framework. Our
+strongest angle is therefore *a diagnostic suite for silent failures in
+reconstruction-based GAD pipelines*, with three deliverables that already exist as
+working scripts:
+
+  1. `pygod_architecture_check.py` -- detects encoder collapse (embedding
+     identically zero while AUROC still looks healthy)
+  2. `degree_norm_diagnostic.py` -- tests whether degree normalization helps or
+     hurts on a given graph, instead of inheriting the setting
+  3. `calibration_distribution_check.py` -- compares calibration score
+     distributions across conditions, which is what conformal p-values actually
+     depend on
+
+That is a materially stronger submission than "we studied FDR control and found a
+null", because it hands readers something they can run on their own pipelines.
+
+Verify the current cycle deadline and scope directly -- dates change and D&B
+occasionally adjusts what it accepts.
+
+### 8.4 Best topical fit: COPA
+
+The Symposium on Conformal and Probabilistic Prediction is the conformal
+prediction community's home venue. `clarkson2024contamination`, in our own
+bibliography, was published there. Proceedings go to PMLR; no publication fee.
+
+These are the only reviewers who will genuinely engage with the p-value floor
+argument, the PRDS testing in the appendix and the e-BH construction, rather than
+skimming past them. Lower general name recognition than NeurIPS, much higher
+chance of a review that actually improves the paper.
+
+**COPA 2026 has closed** (papers May 20, posters Aug 1). **COPA 2027 would be
+around May 2027.**
+
+### 8.5 Other viable options
+
+| Venue | Fit | Estimate | Note |
+|---|---|---|---|
+| AISTATS / UAI | Statistical core | ~10-20% | Value careful negative results more than systems venues |
+| SDM | Good | ~20-25% | Where DOMINANT itself was published |
+| CIKM | Reasonable | ~20% | Solid mid-tier |
+| PAKDD | Reasonable | ~25-30% | Legitimate, lower prestige |
+| ICDM / KDD | Scope fine, bar too high | ~10% | Want a method |
+| NeurIPS/ICML/ICLR main track | Poor | <5% | No novel method or theorem |
+
+### 8.6 A practical blocker: arXiv endorsement
+
+We do not have arXiv endorsement, and cs.LG requires it for authors without prior
+submissions in the category. That removes the "post a preprint immediately, it
+costs nothing" option earlier versions of this document assumed.
+
+Two ways around it, neither instant:
+
+1. **Get endorsed.** Any author with recent cs.LG submissions can endorse. The
+   natural route is a UIUC faculty member in ML or data mining -- worth pursuing
+   regardless, since a faculty collaborator would also improve the paper, provide
+   a letter, and change how reviewers read a submission from unaffiliated
+   students.
+2. **Submit to a venue first.** Acceptance anywhere makes endorsement
+   straightforward and makes the preprint less necessary.
+
+Until then, treat the GitHub repo as the citable artifact. It is public, has full
+history, and everything in this document is reproducible from it.
 
 ## 9. What to do next
 
-### 9.1 Immediate (this week)
+### 9.1 Immediate -- for Gopal
 
-- [ ] Do the rewrite (section 7). Experiments are done; numbers do not change.
-- [ ] Fix all factual errors in 6.4 -- these are not optional.
-- [ ] Post to arXiv.
+**Stop running experiments. Start writing.** The marginal value of another
+detector or dataset is now low; we have more empirical breadth (5 detectors x 5
+datasets) than most GAD papers. The marginal value of writing is very high,
+because nothing is written and the current draft contains claims we now know are
+false.
+
+In priority order:
+
+- [ ] **Read 4.10, 4.11 and 5.5 first.** Those three findings change what the
+      paper says. 5.5 especially -- the proposition still holds as a sufficient
+      condition, but the bidirectional reading we were using is falsified, and
+      that must not ship.
+- [ ] **Fix the outright factual errors** (6.4), independent of framing. Highest
+      priority is the section-Datasets propagation paragraph, which describes an
+      experiment no code path runs. Then the abstract's mechanism claim, the
+      AUROC numbers, and the degree-correction sentence about Yelp.
+- [ ] **Rewrite title / abstract / intro** around the discovery question rather
+      than contamination (section 7).
+- [ ] **Rebuild results around the multi-detector matrix**, leading with real
+      data. The 20-cell direction table in 4.10 is the strongest single piece of
+      evidence in the paper.
+- [ ] **Rewrite Appendix A** from "failed approach" to the paper's positive
+      result, with 5.5's limits stated honestly.
+- [ ] Update `theory/joint_discovery_threshold_proposition.md` per 5.4 and 5.5.
+- [ ] Decide: re-test or drop "fails into silence" (4.8). Do not carry it forward
+      unexamined.
+
+Smaller loose ends, none blocking:
+
 - [ ] Paste Yelp's measured raw vs degree_norm AUROCs into the TODO comment in
-      `DEGREE_NORM_BY_DATASET` (`scripts/real_data_experiment.py`), matching the
-      style of the weibo entry.
-- [ ] Confirm `m` values in the 15/15 table against `m_test` in the CSV.
-- [ ] Update `theory/joint_discovery_threshold_proposition.md` per 5.4.
-- [ ] Measure `exposure~degree` on Weibo -- the last loose end. Weibo is the only
-      dataset where the calibration distribution moves monotonically with
-      exposure (q95 342->364->399, clear_anom 0.0173->0.0163->0.0144), and the
-      degree explanation does not obviously fit its direction.
-      `exposure_degree_confound_check.py --datasets weibo`
-- [ ] **Re-test or drop "fails into silence"** (4.8).
+      `DEGREE_NORM_BY_DATASET`
+- [ ] Confirm `m` values in the proposition table against `m_test` in the CSVs
+- [ ] Measure `exposure~degree` on Weibo -- the only dataset where the calibration
+      distribution moves monotonically with exposure
+- [ ] Run Yelp under each of the four PyGOD detectors (`--use_sparse_prop`),
+      taking the matrix to 25 cells per condition
+- [ ] Fix the dead reference in the theory doc's item 4
 
 ### 9.2 To reach IEEE Transactions level (months)
 
