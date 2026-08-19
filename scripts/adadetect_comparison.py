@@ -47,7 +47,6 @@ import csv
 import numpy as np
 from scipy import stats
 
-from detector import train_dominant
 from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
 from adadetect import (
     VARIANTS,
@@ -58,6 +57,7 @@ from adadetect import (
     evaluate_arm,
     frame_floor_stats,
 )
+from detectors import score_nodes, available_detectors
 
 SYNTHETIC = "synthetic"
 
@@ -102,13 +102,15 @@ def run_seed(dataset, condition, seed, args, cached):
     key = (dataset, seed)
     if key not in cached:
         graph, features, labels, frame_kind, use_degree_norm = load_graph(dataset, seed)
-        scores, model = train_dominant(
-            graph, features, n_epochs=args.n_epochs, seed=seed, verbose=False,
-            device=args.device, use_sparse_prop=args.use_sparse_prop)
+        scores, model = score_nodes(args.detector, graph, features, labels=labels,
+                                    n_epochs=args.n_epochs, seed=seed,
+                                    device=args.device, use_sparse_prop=args.use_sparse_prop,
+                                    return_model=True)
         if use_degree_norm:
             from real_data_experiment import degree_normalize_scores
             scores = degree_normalize_scores(graph, scores)
-        embedding = encoder_embedding(graph, features, model, device=args.device)
+        embedding = encoder_embedding(graph, features, model, device=args.device,
+                                      use_sparse_prop=args.use_sparse_prop)
         degrees = np.array([graph.degree(i) for i in range(graph.number_of_nodes())],
                            dtype=float)
         cached.clear()  # only ever hold one graph -- these are large
@@ -212,6 +214,17 @@ def summarize(rows, method_key, alpha):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=SYNTHETIC)
+    parser.add_argument("--detector", type=str, default="dominant_pygod",
+                        choices=available_detectors(),
+                        help="Which detector trains the scores every arm is built from. "
+                             "Defaults to dominant_pygod (the correct implementation), NOT "
+                             "dominant_ours (the frozen, broken detector -- see "
+                             "DETECTOR_DIAGNOSTIC.md) despite the latter being adadetect.py's "
+                             "original historical default. Pass --detector dominant_ours "
+                             "explicitly if you need to reproduce a prior broken-detector run "
+                             "for comparison; do not rely on this flag's default silently "
+                             "changing old results if this script is rerun without re-reading "
+                             "this help text.")
     parser.add_argument("--conditions", type=str, nargs="+",
                         default=["contaminated", "adversarial"])
     parser.add_argument("--variants", type=str, nargs="+", default=list(VARIANTS),

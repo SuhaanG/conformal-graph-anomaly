@@ -153,7 +153,8 @@ def _per_node(mode, model, data, out):
     raise ValueError(f"unknown scoring mode {mode!r}")
 
 
-def _train_pygod(name, graph, features, labels, seed, n_epochs, device, lr=0.01):
+def _train_pygod(name, graph, features, labels, seed, n_epochs, device, lr=0.01,
+                  return_model=False):
     import importlib
     spec = PYGOD_SPECS[name]
     try:
@@ -207,26 +208,42 @@ def _train_pygod(name, graph, features, labels, seed, n_epochs, device, lr=0.01)
     scores = per.detach().cpu().numpy()
     if scores.ndim > 1:
         scores = scores.reshape(scores.shape[0], -1).mean(axis=1)
-    return np.asarray(scores, dtype=np.float64).ravel()
+    scores = np.asarray(scores, dtype=np.float64).ravel()
+    if return_model:
+        return scores, model
+    return scores
 
 
 def score_nodes(detector, graph, features, labels=None, *, seed=0, n_epochs=100,
-                device="cpu", use_sparse_prop=False, score_alpha=0.5):
+                device="cpu", use_sparse_prop=False, score_alpha=0.5, return_model=False):
     """Per-node anomaly scores, higher = more anomalous.
 
     detector: see available_detectors(). "dominant_ours" delegates to the frozen
         train_dominant and reproduces existing results byte-for-byte.
     use_sparse_prop: only meaningful for "dominant_ours" (large-graph path,
         required for Yelp). PyGOD detectors already use sparse message passing.
+    return_model: if True, returns (scores, model) instead of scores alone.
+        For "dominant_ours", this is train_dominant's own model object (same
+        interface adadetect.encoder_embedding already expects: a .encode(A_norm, X)
+        method). For PyGOD detectors, this is the trained nn.Module itself; its
+        final forward pass during training already populated model.emb (PyGOD's
+        DOMINANTBase, and the other recon_xs/recon_x architectures that expose an
+        encoder, set self.emb inside forward() -- confirmed for DOMINANT via
+        scripts/pygod_architecture_check.py), so no second forward pass is needed
+        to read the embedding back out.
     """
     if detector == "dominant_ours":
-        scores, _ = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
+        scores, model = train_dominant(graph, features, n_epochs=n_epochs, seed=seed,
                                    verbose=False, device=device, alpha=score_alpha,
                                    use_sparse_prop=use_sparse_prop)
-        return np.asarray(scores, dtype=np.float64)
+        scores = np.asarray(scores, dtype=np.float64)
+        if return_model:
+            return scores, model
+        return scores
 
     if detector in PYGOD_SPECS:
-        return _train_pygod(detector, graph, features, labels, seed, n_epochs, device)
+        return _train_pygod(detector, graph, features, labels, seed, n_epochs, device,
+                            return_model=return_model)
 
     raise ValueError(f"unknown detector {detector!r}. Available: {available_detectors()}")
 

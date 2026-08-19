@@ -238,7 +238,7 @@ def frame_floor_stats(n_calib, n_test, alpha):
 # ---------------------------------------------------------------------------
 
 def encoder_embedding(graph, features, model, device="cpu", use_sparse_prop=False):
-    """The DOMINANT encoder's node representation Z (hidden_dim per node).
+    """The trained detector's node representation Z (hidden_dim per node).
 
     This is the PRIMARY covariate: it carries exactly the information our own
     score is computed from -- same trained model, same graph, same features --
@@ -246,13 +246,32 @@ def encoder_embedding(graph, features, model, device="cpu", use_sparse_prop=Fals
     classifier vs a fixed reconstruction error). That is what makes it the
     information-matched comparison.
 
-    `use_sparse_prop` MUST match whatever was passed to train_dominant. The two
-    propagation matrices are numerically equivalent (asserted in
-    tests/test_normalize_equivalence.py), so this does not change the
-    embedding -- but reconstructing it through a different path than training
-    used is the kind of quiet inconsistency that is impossible to debug later,
-    and the dense path costs O(n^3) (~65 min at Yelp scale) for no benefit.
+    Branches on model type, since the frozen dominant_ours model and PyGOD
+    models expose the embedding differently:
+
+    - dominant_ours model: has .encode(A_norm, X). Rebuilds the normalized
+      adjacency and calls encode() explicitly. `use_sparse_prop` MUST match
+      whatever was passed to train_dominant -- the two propagation matrices
+      are numerically equivalent (asserted in tests/test_normalize_equivalence.py)
+      but reconstructing through a different path than training used is the
+      kind of quiet inconsistency that is impossible to debug later, and the
+      dense path costs O(n^3) (~65 min at Yelp scale) for no benefit.
+    - PyGOD model: has .emb, populated by the final forward pass detectors.py's
+      _train_pygod already ran during training/eval. No second forward pass
+      needed -- read it directly.
     """
+    if hasattr(model, "emb") and not hasattr(model, "encode"):
+        # PyGOD model: .emb was already set by the last forward pass in
+        # detectors.py's _train_pygod (model.eval() + one more forward call).
+        if model.emb is None:
+            raise RuntimeError(
+                "PyGOD model.emb is None -- was score_nodes(..., return_model=True) "
+                "actually called with a PyGOD detector, and did training complete? "
+                "encoder_embedding cannot re-run a forward pass for a PyGOD model "
+                "without the original edge_index, which is not passed to this function."
+            )
+        return model.emb.detach().cpu().numpy()
+
     import networkx as nx
 
     n = graph.number_of_nodes()
