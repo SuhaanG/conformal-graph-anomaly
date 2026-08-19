@@ -484,10 +484,13 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--detector", type=str, default="dominant_ours",
-                        help="Scorer to use; see src/detectors.py. 'dominant_ours' is "
-                             "the frozen path and reproduces published numbers "
-                             "byte-for-byte. PyGOD options use a CORRECT encoder.")
+    parser.add_argument("--detector", type=str, default="dominant_pygod",
+                        help="Scorer to use; see src/detectors.py. Defaults to "
+                             "'dominant_pygod', a CORRECT implementation. "
+                             "'dominant_ours' is the frozen path: it reproduces the "
+                             "published numbers byte-for-byte, but its encoder's final "
+                             "ReLU layer is dead (frac_zero=1.0), so it is kept ONLY "
+                             "for reproducing frozen results -- never for new ones.")
     parser.add_argument("--degree_norm", type=str, default="auto",
                         choices=["auto", "on", "off"],
                         help="'auto' reads DEGREE_NORM_BY_DATASET, measured for "
@@ -521,6 +524,18 @@ def main():
                        if _dn is None else _dn)
     print(f"Degree normalization: {'ON' if use_degree_norm else 'OFF'} "
           f"(dataset-specific default -- see DEGREE_NORM_BY_DATASET)\n")
+
+    # DEGREE_NORM_BY_DATASET was measured under dominant_ours. Since the default
+    # detector is no longer dominant_ours, 'auto' is now an inherited setting
+    # rather than a measured one for every other scorer -- exactly the mistake
+    # that made Yelp's entry wrong. Say so out loud instead of defaulting quietly.
+    if _dn is None and args.detector != "dominant_ours":
+        print(f"WARNING: --degree_norm auto resolved to "
+              f"{'ON' if use_degree_norm else 'OFF'} from a table measured under "
+              f"dominant_ours, but --detector is {args.detector}. This setting is "
+              f"INHERITED, not measured, for this detector. Run "
+              f"scripts/degree_norm_diagnostic.py to measure it, or pass "
+              f"--degree_norm on/off explicitly.\n")
 
     all_results = []
     all_ranks = []
