@@ -77,6 +77,28 @@ from conformal_fdr import conformal_p_values, benjamini_hochberg
 
 SUPPORTED_DATASETS = {"amazon", "yelp", "tolokers", "weibo", "reddit"}
 
+
+def compute_ranks(calib_scores: np.ndarray, test_scores: np.ndarray) -> np.ndarray:
+    """r(v) = |{u in calib : S(u) >= S(v)}| + 1, matching conformal_fdr.py's
+    conformal_p_values definition exactly. Identical to the version in
+    severity_sweep_pygod_instrumented.py and condition_comparison_pygod.py
+    (unit-tested there against conformal_p_values on synthetic data before
+    first use); duplicated here rather than imported since scripts/ has no
+    shared-utility module in this repo."""
+    n_calib = len(calib_scores)
+    sorted_calib = np.sort(calib_scores)
+    count_lt = np.searchsorted(sorted_calib, test_scores, side="left")
+    count_ge = n_calib - count_lt
+    return count_ge + 1
+
+
+def rank_grid(n_calib: int, n_points: int = 25) -> np.ndarray:
+    """Geometric grid from 1 to n_calib+1. Identical to the severity-sweep
+    and condition-comparison scripts' version, for consistency across all
+    three sources of rank data feeding the extended discovery proposition
+    (theory/joint_discovery_threshold_proposition.md Part 2)."""
+    return np.unique(np.round(np.geomspace(1, n_calib + 1, n_points)).astype(int))
+
 NODE_TYPE_BY_DATASET = {"amazon": "user", "yelp": "review"}
 
 
@@ -307,7 +329,24 @@ DEGREE_NORM_BY_DATASET = {
 
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
-                         trim_pct=0.01, use_sparse_prop=False, detector="dominant_ours"):
+                         trim_pct=0.01, use_sparse_prop=False, detector="dominant_ours",
+                         log_ranks=False, n_rank_points=25):
+    """log_ranks defaults to False and the trial-row return value is
+    UNCHANGED in that case, so every existing call site and every existing
+    output CSV's schema is untouched. When True, additionally computes
+    rank-indexed clearance data (N_1(r), N_0(r), whether the BH crossing
+    condition holds) across a geometric grid of ranks, needed to check the
+    extended discovery proposition (theory/joint_discovery_threshold_
+    proposition.md Part 2) against real data for the first time -- this is
+    specifically motivated by the Amazon/clean case reported in
+    PAPER_REFRAME_HANDOFF.md section 5.5, where the floor-only condition
+    (r=1) predicted zero discoveries (required clearance 218, observed 134)
+    but the actual result was 3,420 discoveries, driven by rejections at
+    ranks well above the floor -- exactly the case the floor-only reading
+    cannot explain and the extended proposition was built to cover.
+
+    Return value: if log_ranks=False, returns the trial dict alone (as
+    before). If log_ranks=True, returns (trial_dict, rank_rows)."""
     scores = score_nodes(detector, graph, features, labels, seed=seed,
                           n_epochs=n_epochs, device=device,
                           use_sparse_prop=use_sparse_prop, score_alpha=score_alpha)
@@ -406,10 +445,36 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
     power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
 
-    return {
+    m_test = len(test_idx)
+    m_1 = int(test_labels.sum())
+    trial_row = {
         "condition": contamination_condition, "seed": seed, "n_calib": len(calib_idx),
+        "m_test": m_test, "m_1": m_1,
+        "pi_1": (m_1 / m_test if m_test > 0 else float("nan")),
         "n_discoveries": int(n_discoveries), "realized_fdr": realized_fdr, "power": power,
     }
+
+    if not log_ranks:
+        return trial_row
+
+    ranks = compute_ranks(calib_scores, test_scores)
+    anomaly_mask = test_labels == 1
+    n_calib = len(calib_idx)
+    rank_rows = []
+    for r in rank_grid(n_calib, n_rank_points):
+        n1_r = int(np.sum(ranks[anomaly_mask] <= r))
+        n0_r = int(np.sum(ranks[~anomaly_mask] <= r))
+        n_r = n1_r + n0_r
+        bh_threshold = (m_test / alpha) * (r / (n_calib + 1))
+        rank_rows.append({
+            "condition": contamination_condition, "seed": seed, "r": int(r),
+            "n1_r": n1_r, "n0_r": n0_r, "n_r": n_r,
+            "c_r": (n1_r / m_1 if m_1 > 0 else float("nan")),
+            "bh_threshold_at_r": bh_threshold,
+            "dagger_satisfied": bool(n_r >= bh_threshold),
+        })
+
+    return trial_row, rank_rows
 
 
 def main():
@@ -433,6 +498,14 @@ def main():
                              "~65 min per call at that size, and a GPU does not help since "
                              "it is numpy. Off by default so every existing result "
                              "reproduces byte-identically.")
+    parser.add_argument("--log_ranks", action="store_true",
+                        help="Additionally log rank-indexed clearance data (N_1(r), N_0(r), "
+                             "BH crossing condition) to a second CSV, needed to check the "
+                             "extended discovery proposition against real data. Off by "
+                             "default -- adds a second output file and changes nothing about "
+                             "the existing trial-level CSV's schema or values when omitted.")
+    parser.add_argument("--n_rank_points", type=int, default=25,
+                        help="Only used with --log_ranks. Size of the geometric rank grid.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -450,19 +523,30 @@ def main():
           f"(dataset-specific default -- see DEGREE_NORM_BY_DATASET)\n")
 
     all_results = []
+    all_ranks = []
     for condition in ["clean", "contaminated", "adversarial"]:
         print(f"=== Running {args.n_seeds} seeds for condition: {condition} ===")
         for seed in range(args.n_seeds):
-            result = run_real_data_trial(graph, features, labels, condition,
-                                          args.alpha, seed, args.n_epochs, device,
-                                          use_degree_norm=use_degree_norm,
-                                    use_sparse_prop=args.use_sparse_prop, detector=args.detector)
-            if result is None:
+            out = run_real_data_trial(graph, features, labels, condition,
+                                       args.alpha, seed, args.n_epochs, device,
+                                       use_degree_norm=use_degree_norm,
+                                       use_sparse_prop=args.use_sparse_prop, detector=args.detector,
+                                       log_ranks=args.log_ranks, n_rank_points=args.n_rank_points)
+            if out is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
                 continue
+            if args.log_ranks:
+                result, rank_rows = out
+                all_ranks.extend(rank_rows)
+                floor_dagger = rank_rows[0]["dagger_satisfied"]
+                any_dagger = any(r["dagger_satisfied"] for r in rank_rows)
+            else:
+                result = out
             all_results.append(result)
+            extra = (f" | floor_predicts={floor_dagger} any_r_predicts={any_dagger} "
+                     f"observed={result['n_discoveries'] > 0}") if args.log_ranks else ""
             print(f"  seed {seed}: n_discoveries={result['n_discoveries']:3d} "
-                  f"realized_fdr={result['realized_fdr']:.3f} power={result['power']:.3f}")
+                  f"realized_fdr={result['realized_fdr']:.3f} power={result['power']:.3f}{extra}")
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
@@ -473,6 +557,19 @@ def main():
         writer.writeheader()
         writer.writerows(all_results)
     print(f"\nSaved raw results to {csv_path}")
+
+    if args.log_ranks and all_ranks:
+        rank_csv_path = os.path.join(out_dir, f"real_data_experiment_{args.dataset}{suffix}_ranks.csv")
+        with open(rank_csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=list(all_ranks[0].keys()))
+            writer.writeheader()
+            writer.writerows(all_ranks)
+        print(f"Saved rank-grid results to {rank_csv_path}")
+        print("Use this to check the extended discovery proposition: for each trial, does")
+        print("ANY r in the grid satisfy dagger_satisfied=True exactly when n_discoveries > 0")
+        print("in the matching row? The clean condition on dense graphs (e.g. Amazon, where")
+        print("the floor-only condition is known to fail per PAPER_REFRAME_HANDOFF.md 5.5)")
+        print("is the case most likely to show the floor failing while a larger r succeeds.")
 
     print("\n=== Summary ===")
     for condition in ["clean", "contaminated", "adversarial"]:
