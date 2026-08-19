@@ -71,6 +71,7 @@ from scipy import stats
 from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
 from detectors import score_nodes
 from conformal_fdr import conformal_p_values, benjamini_hochberg
+from real_data_experiment import degree_normalize_scores
 
 CONDITIONS = ["clean", "contaminated", "adversarial"]
 
@@ -112,9 +113,21 @@ def rank_grid(n_calib: int, n_points: int = 25) -> np.ndarray:
 
 
 def run_condition_trial(condition, alpha, seed, n_epochs, device,
-                         calib_frac=0.9, n_rank_points=25):
+                         calib_frac=0.9, n_rank_points=25, use_degree_norm=False):
     """Structurally identical to conformal_fdr.run_single_trial, with the
-    single substitution of dominant_pygod for the frozen train_dominant."""
+    single substitution of dominant_pygod for the frozen train_dominant.
+
+    use_degree_norm=False by default, matching the run that found the
+    clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007) -- so the
+    default behavior of this function is unchanged from the version that
+    produced that result. Pass True to test whether
+    real_data_experiment.degree_normalize_scores() (already validated on
+    real data) removes the inflation here too, per
+    clean_selection_degree_diagnostic.py's finding that clean-selected
+    calibration nodes have significantly lower degree than the test-set
+    normal population (t=-24.959, p<0.0001 across 10 seeds) AND
+    dominant_pygod's score correlates with degree on this generator
+    (Spearman r=0.56, significant in 10/10 seeds)."""
     assert condition in CONDITIONS
 
     cfg = GraphGenConfig(
@@ -126,6 +139,9 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
 
     scores = score_nodes("dominant_pygod", graph, features, labels=labels,
                           seed=seed, n_epochs=n_epochs, device=device)
+
+    if use_degree_norm:
+        scores = degree_normalize_scores(graph, scores)
 
     normal_idx = np.where(labels == 0)[0]
     anomaly_idx = np.where(labels == 1)[0]
@@ -229,6 +245,12 @@ def main():
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--n_rank_points", type=int, default=25)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--use_degree_norm", action="store_true",
+                         help="Apply real_data_experiment.degree_normalize_scores() before "
+                              "calibration. Off by default, matching the run that found the "
+                              "clean-condition FDR inflation. Use this to test whether the "
+                              "degree-confound hypothesis from "
+                              "clean_selection_degree_diagnostic.py actually fixes it.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -242,7 +264,7 @@ def main():
         for seed in range(args.n_seeds):
             trial_row, rank_rows = run_condition_trial(
                 condition, args.alpha, seed, args.n_epochs, device,
-                n_rank_points=args.n_rank_points,
+                n_rank_points=args.n_rank_points, use_degree_norm=args.use_degree_norm,
             )
             if trial_row is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
@@ -260,15 +282,16 @@ def main():
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
+    suffix = "_degreenorm" if args.use_degree_norm else ""
 
-    trial_csv = os.path.join(out_dir, "condition_comparison_pygod.csv")
+    trial_csv = os.path.join(out_dir, f"condition_comparison_pygod{suffix}.csv")
     with open(trial_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_trials[0].keys()))
         writer.writeheader()
         writer.writerows(all_trials)
     print(f"\nSaved trial-level results to {trial_csv}")
 
-    rank_csv = os.path.join(out_dir, "condition_comparison_pygod_ranks.csv")
+    rank_csv = os.path.join(out_dir, f"condition_comparison_pygod{suffix}_ranks.csv")
     with open(rank_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_ranks[0].keys()))
         writer.writeheader()
