@@ -69,7 +69,7 @@ import torch
 from scipy import stats
 
 from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
-from detectors import score_nodes
+from detectors import score_nodes, available_detectors
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 from real_data_experiment import degree_normalize_scores
 
@@ -190,9 +190,19 @@ def rank_grid(n_calib: int, n_points: int = 25) -> np.ndarray:
 
 def run_condition_trial(condition, alpha, seed, n_epochs, device,
                          calib_frac=0.9, n_rank_points=25, use_degree_norm=False,
-                         degree_matched_calib=False, n_degree_bins=10):
+                         degree_matched_calib=False, n_degree_bins=10,
+                         detector="dominant_pygod"):
     """Structurally identical to conformal_fdr.run_single_trial, with the
-    single substitution of dominant_pygod for the frozen train_dominant.
+    single substitution of a src/detectors.py scorer for the frozen
+    train_dominant.
+
+    detector defaults to dominant_pygod, which is what produced the
+    clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007). It is
+    parameterised because Part 4 of the theory doc predicts the inflation
+    should scale with each detector's own score-degree dependence, and testing
+    that requires varying the detector while holding graph and selection filter
+    fixed. See theory/joint_discovery_threshold_proposition.md Part 4,
+    prediction 2.
 
     use_degree_norm=False by default, matching the run that found the
     clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007). Tested
@@ -218,7 +228,7 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
     gen = ContaminatedGraphGenerator(cfg)
     graph, features, labels = gen.generate()
 
-    scores = score_nodes("dominant_pygod", graph, features, labels=labels,
+    scores = score_nodes(detector, graph, features, labels=labels,
                           seed=seed, n_epochs=n_epochs, device=device)
 
     if use_degree_norm:
@@ -335,12 +345,23 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--n_rank_points", type=int, default=25)
+    parser.add_argument("--detector", type=str, default="dominant_pygod",
+                        choices=available_detectors(),
+                        help="Which detector produces the scores. Defaults to "
+                             "dominant_pygod, which is what found the clean-condition "
+                             "FDR inflation (0.132 vs nominal 0.10) and which writes to "
+                             "the original unsuffixed filename. Other detectors get a "
+                             "_<detector> suffix so runs never overwrite each other. "
+                             "Varying this is Part 4 prediction 2: the inflation should "
+                             "scale with each detector's own score-degree dependence, "
+                             "and a detector with weak degree sensitivity should show "
+                             "little or none.")
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--use_degree_norm", action="store_true",
                          help="Apply real_data_experiment.degree_normalize_scores() before "
                               "calibration. Off by default. TESTED AND NOT RECOMMENDED: "
                               "collapsed AUROC 1.0->0.90, power 1.0->0.002, and made "
-                              "conditional FDR worse (40-44% vs 13.2%) on a prior run. "
+                              "conditional FDR worse (40-44%% vs 13.2%%) on a prior run. "
                               "Kept for reproducibility, not as a suggested fix.")
     parser.add_argument("--degree_matched_calib", action="store_true",
                          help="For the 'clean' condition only, draw calibration via "
@@ -355,7 +376,7 @@ def main():
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    print("Detector: dominant_pygod (correct implementation, per src/detectors.py)\n")
+    print(f"Detector: {args.detector} (see src/detectors.py)\n")
 
     all_trials = []
     all_ranks = []
@@ -366,6 +387,7 @@ def main():
                 condition, args.alpha, seed, args.n_epochs, device,
                 n_rank_points=args.n_rank_points, use_degree_norm=args.use_degree_norm,
                 degree_matched_calib=args.degree_matched_calib, n_degree_bins=args.n_degree_bins,
+                detector=args.detector,
             )
             if trial_row is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
@@ -391,6 +413,11 @@ def main():
         suffix = "_degreematched"
     else:
         suffix = ""
+    # The default detector keeps the original filename, so the run that found
+    # the 0.132 clean-condition inflation is still written where every
+    # reference to it expects. Only non-default detectors get a suffix.
+    if args.detector != "dominant_pygod":
+        suffix += f"_{args.detector}"
 
     trial_csv = os.path.join(out_dir, f"condition_comparison_pygod{suffix}.csv")
     with open(trial_csv, "w", newline="") as f:
