@@ -24,6 +24,13 @@ rank-logged rerun). Running `real_data_experiment.py --log_ranks` on Amazon
 and checking it with `verify_extended_proposition.py` is the next concrete
 step, not a new one to design.
 
+Part 3 (empirical tension with Proposition 1) and Part 4 (its formalization)
+were added after the degree-confound investigation. **Part 4 is now the
+recommended primary theoretical contribution**, ahead of Part 2's finite-sample
+gap: it is a shorter proof, it rests on standard stochastic-order results, and
+it explains a finding we actually measured rather than sharpening a condition
+reviewers already read as an observation.
+
 ---
 
 ## Part 1: Floor-only condition
@@ -369,3 +376,163 @@ just degree itself. The clean-condition FDR inflation is a REAL,
 PARTIALLY-EXPLAINED finding: report it as such in the paper (Proposition 1
 caveat + this section as a Discussion/Threats-to-Validity subsection), not
 as fully solved and not as fully mysterious.
+---
+
+## Part 4: Selection-induced exchangeability failure (theorem sketch)
+
+**This is the formalization of Part 3. Part 3 established the clean-condition
+FDR inflation empirically and gave a structural argument for why the
+degree-matched fix capped at ~50%. That structural argument is not merely an
+explanation of a limitation -- it is the load-bearing step of a theorem, and
+it should be developed as one. Recommended as the paper's central theoretical
+contribution, ahead of item 2 in "What remains" (the finite-sample
+concentration bound for Part 2).**
+
+### The claim, informally
+
+Constructing a "clean" calibration set by a topological filter is not a
+neutral operation. The filter is a covariate filter: it selects on degree,
+because low-degree nodes are combinatorially more likely to pass it. If the
+detector's score is degree-sensitive -- and reconstruction-based graph
+detectors are, measurably (Spearman r = 0.56, Part 3) -- then calibration
+scores are stochastically smaller than test-normal scores, the conformal
+p-values of normal test points are stochastically smaller than Uniform, and
+BH's FDR guarantee fails upward. The very step taken to guarantee validity is
+what breaks it.
+
+### Setup and assumptions
+
+Let D be the degree of a uniformly drawn normal node, with pmf f(d) over the
+population of normal nodes. Let F denote the calibration eligibility event
+(for the clean condition: "zero anomalous neighbors"). Calibration nodes are
+drawn uniformly from {normal nodes : F holds}; test-normal nodes are drawn
+from the normal population without conditioning on F.
+
+**(A1) Monotone selection.** q(d) := P(F | D = d) is non-increasing in d.
+
+**(A2) Monotone score.** The conditional score distribution S | D = d is
+stochastically increasing in d: d1 <= d2 implies (S | d1) <=_st (S | d2).
+
+**(A3) Continuity.** Scores are continuous, so ties have probability zero.
+(In practice enforced by the existing jitter path; ties weaken the strictness
+of the conclusion, not its direction.)
+
+Note that (A1) is far weaker than the (1-pi)^d form used in Part 3. The
+theorem needs only monotonicity. The exponential form is a worked special
+case supplying the quantitative rate; it should NOT be assumed on real
+graphs, where q(d) must be measured rather than derived, since independent
+attachment does not hold there.
+
+### Step 1: Selection is a likelihood-ratio tilt on degree
+
+The eligible pool has degree pmf
+
+    f_F(d) = f(d) q(d) / Z,     Z = sum_d f(d) q(d)
+
+so the likelihood ratio f_F(d)/f(d) = q(d)/Z is non-increasing in d by (A1).
+A non-increasing likelihood ratio is the definition of the likelihood-ratio
+order, hence
+
+    D_F <=_lr D    and therefore    D_F <=_st D
+
+(likelihood-ratio order implies the usual stochastic order; Shaked &
+Shanthikumar, Stochastic Orders, Thm 1.C.1).
+
+**Special case.** Under independent attachment at neighbor-anomaly rate pi,
+q(d) = (1-pi)^d = exp(-lambda d) with lambda = -log(1-pi) > 0. Then f_F is an
+exponential tilt of f with negative parameter, and the mean-degree gap is
+
+    E[D] - E[D_F] = lambda * Var(D) + O(lambda^2)
+
+for small lambda. This is the closed form behind Part 3's table, and it
+predicts the sign and rough magnitude of the observed calibration-vs-test
+mean degree gap (71.32 vs 73.10) without fitting anything.
+
+### Step 2: The ordering transfers to scores
+
+By (A2), the map d -> (S | d) is a stochastically monotone kernel. The usual
+stochastic order is closed under such kernels, so D_F <=_st D gives
+
+    S_cal <=_st S_test-normal
+
+strictly, unless q is constant on the support of f (no selection) or the
+score is degree-independent ((A2) holding with equality).
+
+### Step 3: Stochastically small calibration scores inflate rejection rates
+
+Let v be a normal test point with score S_v, and let the conformal p-value be
+p_v = (|{i in cal : S_i >= S_v}| + 1)/(n+1).
+
+Couple S_v with S_v' ~ F_cal so that S_v >= S_v' almost surely (possible by
+Step 2 and Strassen's theorem). The calibration rank is non-increasing in the
+test score, so r(S_v) <= r(S_v') pointwise, hence for every t,
+
+    P(p_v <= t) >= P(p_v' <= t) = floor(t(n+1))/(n+1)
+
+The right-hand side is the exact exchangeable (valid) rate. So the null
+p-values are stochastically DOMINATED by Uniform -- anti-conservative -- with
+the inequality strict whenever Step 2 is strict.
+
+### Step 4: Consequence for BH
+
+BH controls FDR at alpha*m_0/m when null p-values are (super-)uniform. Define
+the anti-conservativeness factor
+
+    gamma := sup_{t in (0,1]} P(p_v <= t) / t   >= 1
+
+Step 3 gives gamma > 1 strictly under selection. Running BH at level alpha
+then controls FDR only at level gamma * alpha * m_0/m: the realized FDR can
+exceed nominal by up to a factor gamma. The observed 0.132 against a nominal
+0.10 corresponds to gamma ~ 1.32, which is the number to predict from a
+measured q(d) and the measured score-degree dependence. That prediction --
+theory-predicted gamma versus empirically realized gamma -- is the experiment
+that would turn this from a sketch into a validated theorem, and it needs no
+new infrastructure beyond what condition_comparison_pygod.py and
+clean_selection_degree_diagnostic.py already log.
+
+### Corollary (why any reweighting fix has a ceiling)
+
+degree_matched_calib_sample() reweights within the eligible pool. Any such
+scheme produces a degree distribution absolutely continuous with respect to
+f_F, so it can never place mass where f_F has none. The achievable total
+variation distance to the target f is bounded below:
+
+    inf over g << f_F of TV(g, f)  >=  sum over {d : f_F(d) = 0} of f(d)
+
+and more practically, matching in a region where f_F(d)/f(d) is tiny requires
+importance weights of order 1/q(d), whose variance explodes exactly where the
+pool is thin. This is a proof, not a conjecture, that the fix caps out -- and
+it explains Part 3's "closes about half the gap, and finer bins will not
+help" without appeal to implementation detail.
+
+### What this predicts that is testable and not yet tested
+
+1. **Weighted conformal is the principled fix.** Weighting calibration points
+   by w(d) proportional to 1/q(d) restores exchangeability in the weighted
+   conformal framework (Tibshirani, Barber, Candes & Ramdas 2019), up to the
+   variance blow-up above. This should beat degree_matched_calib_sample(), by
+   a predictable margin. Not yet implemented.
+2. **The effect should scale with measured score-degree dependence.** Across
+   the five detectors already in the matrix, gamma should track each
+   detector's own Spearman(score, degree). A detector with weak degree
+   dependence should show little or no clean-condition inflation. This is a
+   cross-detector prediction the existing multi-detector infrastructure can
+   test directly, and it is the single most falsifiable claim here.
+3. **The effect should vanish under a degree-independent filter.** Selecting
+   calibration uniformly at random (accepting contamination) should give
+   gamma ~ 1. Part 3 already reports contaminated and adversarial safely at
+   or below nominal, which is consistent -- but that was not framed as a test
+   of this prediction and should be re-read as one.
+
+### Honest status
+
+Steps 1-3 are rigorous given (A1)-(A3) and rest on standard stochastic-order
+results, not new machinery. Step 4's gamma is a valid upper bound but not yet
+a sharp characterization. Prediction 2 is the one that would most
+convincingly establish the mechanism, because it varies the proposed cause
+across detectors while holding the graph and the selection filter fixed; if
+gamma does not track score-degree dependence across detectors, the mechanism
+as stated is wrong and this section must be revised, not defended.
+
+None of Part 4 has been numerically checked yet. Do not present it as
+established until at least prediction 2 has been run.
