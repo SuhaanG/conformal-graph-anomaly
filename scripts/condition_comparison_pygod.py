@@ -76,6 +76,82 @@ from real_data_experiment import degree_normalize_scores
 CONDITIONS = ["clean", "contaminated", "adversarial"]
 
 
+def degree_matched_calib_sample(rng, candidate_idx, candidate_degree, target_degree,
+                                 n_calib, n_bins=10):
+    """Draws up to n_calib items from candidate_idx so the SAMPLE's degree
+    distribution matches target_degree's distribution, instead of taking a
+    uniform draw from candidate_idx directly (which is what produced the
+    degree-biased clean calibration set found by
+    clean_selection_degree_diagnostic.py: clean-selected nodes had
+    significantly lower degree than the test-set normal population,
+    t=-24.959, p<0.0001).
+
+    Unlike degree_normalize_scores() (which rescales every score and was
+    tested in condition_comparison_pygod.py --use_degree_norm -- it collapsed
+    AUROC from 1.0 to ~0.90 and power from 1.0 to ~0.002, and made conditional
+    FDR on the rare trials that still fired WORSE, 40-44% vs the original
+    13.2%, not better), this function never touches scores. It only changes
+    which nodes get selected into calibration, addressing the selection bias
+    directly rather than distorting the detector's signal to compensate for it.
+
+    Bins are defined by target_degree's quantiles (n_bins equal-mass bins).
+    For each bin, draws min(bin's target proportion * n_calib, candidates
+    available in that bin) from candidate_idx, without replacement. If bin
+    shortfalls leave the total sample below n_calib (candidate_idx simply
+    lacks enough high-degree members to fully match, since it's drawn from
+    a low-degree-biased pool by construction), a top-up pass fills remaining
+    slots from whatever unselected candidates remain, so the final sample
+    size still equals n_calib when the candidate pool is large enough overall
+    -- but the achieved match will be imperfect in that case, which is
+    reported via the returned KS statistic, not hidden.
+
+    Returns: (selected_idx, achieved_ks_stat, achieved_ks_p) -- the KS test
+    compares the SELECTED sample's degree against target_degree, so the
+    caller can see how well matching actually worked, not just assume it did."""
+    candidate_idx = np.asarray(candidate_idx)
+    candidate_degree = np.asarray(candidate_degree, dtype=float)
+    target_degree = np.asarray(target_degree, dtype=float)
+
+    bin_edges = np.quantile(target_degree, np.linspace(0, 1, n_bins + 1))
+    bin_edges[0] -= 1e-9   # ensure the minimum value falls inside bin 1, not on the boundary
+    bin_edges[-1] += 1e-9
+
+    target_bin = np.digitize(target_degree, bin_edges) - 1
+    target_bin = np.clip(target_bin, 0, n_bins - 1)
+    target_counts = np.bincount(target_bin, minlength=n_bins)
+    target_props = target_counts / target_counts.sum()
+
+    cand_bin = np.digitize(candidate_degree, bin_edges) - 1
+    cand_bin = np.clip(cand_bin, 0, n_bins - 1)
+
+    selected = []
+    used_mask = np.zeros(len(candidate_idx), dtype=bool)
+    for b in range(n_bins):
+        desired = int(round(target_props[b] * n_calib))
+        available_mask = (cand_bin == b) & (~used_mask)
+        available_positions = np.where(available_mask)[0]
+        take = min(desired, len(available_positions))
+        if take > 0:
+            chosen = rng.choice(available_positions, size=take, replace=False)
+            selected.extend(chosen.tolist())
+            used_mask[chosen] = True
+
+    # top-up pass: if bin shortfalls left us short of n_calib, fill from
+    # whatever candidates remain unselected, regardless of bin
+    if len(selected) < n_calib:
+        remaining_positions = np.where(~used_mask)[0]
+        shortfall = n_calib - len(selected)
+        take = min(shortfall, len(remaining_positions))
+        if take > 0:
+            topup = rng.choice(remaining_positions, size=take, replace=False)
+            selected.extend(topup.tolist())
+
+    selected_idx = candidate_idx[np.array(selected, dtype=int)]
+    selected_degree = candidate_degree[np.array(selected, dtype=int)]
+    ks_stat, ks_p = stats.ks_2samp(selected_degree, target_degree)
+    return selected_idx, ks_stat, ks_p
+
+
 def compute_ranks(calib_scores: np.ndarray, test_scores: np.ndarray) -> np.ndarray:
     """Identical to severity_sweep_pygod_instrumented.py's version (unit-tested
     there against conformal_p_values). Duplicated rather than imported since
@@ -113,21 +189,26 @@ def rank_grid(n_calib: int, n_points: int = 25) -> np.ndarray:
 
 
 def run_condition_trial(condition, alpha, seed, n_epochs, device,
-                         calib_frac=0.9, n_rank_points=25, use_degree_norm=False):
+                         calib_frac=0.9, n_rank_points=25, use_degree_norm=False,
+                         degree_matched_calib=False, n_degree_bins=10):
     """Structurally identical to conformal_fdr.run_single_trial, with the
     single substitution of dominant_pygod for the frozen train_dominant.
 
     use_degree_norm=False by default, matching the run that found the
-    clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007) -- so the
-    default behavior of this function is unchanged from the version that
-    produced that result. Pass True to test whether
-    real_data_experiment.degree_normalize_scores() (already validated on
-    real data) removes the inflation here too, per
-    clean_selection_degree_diagnostic.py's finding that clean-selected
-    calibration nodes have significantly lower degree than the test-set
-    normal population (t=-24.959, p<0.0001 across 10 seeds) AND
-    dominant_pygod's score correlates with degree on this generator
-    (Spearman r=0.56, significant in 10/10 seeds)."""
+    clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007). Tested
+    True in a prior run: it collapsed AUROC from 1.0 to ~0.90 and power
+    from 1.0 to ~0.002, and made conditional FDR on the rare trials that
+    still fired WORSE (40-44%, not better) -- too blunt an instrument,
+    kept here only for reproducibility of that comparison, not recommended.
+
+    degree_matched_calib=False by default. When True, replaces the
+    "clean" condition's uniform draw from the zero-exposure pool with
+    degree_matched_calib_sample() (see above), addressing the selection
+    bias directly instead of rescaling scores. Only affects "clean" --
+    "contaminated" already draws uniformly from the full normal pool
+    (not a topologically filtered subset, so no equivalent bias to
+    correct), and "adversarial" is a deliberate worst-case selection,
+    not a candidate for degree-matching."""
     assert condition in CONDITIONS
 
     cfg = GraphGenConfig(
@@ -146,6 +227,8 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
     normal_idx = np.where(labels == 0)[0]
     anomaly_idx = np.where(labels == 1)[0]
 
+    degree = np.array([graph.degree(i) for i in normal_idx], dtype=float)
+
     exposure = np.zeros(len(normal_idx))
     for j, i in enumerate(normal_idx):
         neighbors = list(graph.neighbors(i))
@@ -155,15 +238,22 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
 
     rng = np.random.default_rng(seed)
 
-    clean_pool = normal_idx[exposure == 0]
+    clean_mask = exposure == 0
+    clean_pool = normal_idx[clean_mask]
     n_calib = int(round(calib_frac * len(clean_pool)))
 
     if len(clean_pool) < 20:
         return None, None
 
+    achieved_ks_p = None
     if condition == "clean":
         eligible_calib_pool = clean_pool
-        calib_idx = rng.choice(eligible_calib_pool, size=n_calib, replace=False)
+        if degree_matched_calib:
+            calib_idx, achieved_ks_stat, achieved_ks_p = degree_matched_calib_sample(
+                rng, clean_pool, degree[clean_mask], degree, n_calib, n_bins=n_degree_bins,
+            )
+        else:
+            calib_idx = rng.choice(eligible_calib_pool, size=n_calib, replace=False)
     elif condition == "contaminated":
         eligible_calib_pool = normal_idx
         calib_idx = rng.choice(eligible_calib_pool, size=n_calib, replace=False)
@@ -213,6 +303,7 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
         "n_discoveries": n_discoveries,
         "realized_fdr": realized_fdr,
         "power": power,
+        "degree_match_ks_p": achieved_ks_p if achieved_ks_p is not None else float("nan"),
     }
 
     ranks = compute_ranks(calib_scores, test_scores)
@@ -247,10 +338,19 @@ def main():
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--use_degree_norm", action="store_true",
                          help="Apply real_data_experiment.degree_normalize_scores() before "
-                              "calibration. Off by default, matching the run that found the "
-                              "clean-condition FDR inflation. Use this to test whether the "
-                              "degree-confound hypothesis from "
-                              "clean_selection_degree_diagnostic.py actually fixes it.")
+                              "calibration. Off by default. TESTED AND NOT RECOMMENDED: "
+                              "collapsed AUROC 1.0->0.90, power 1.0->0.002, and made "
+                              "conditional FDR worse (40-44% vs 13.2%) on a prior run. "
+                              "Kept for reproducibility, not as a suggested fix.")
+    parser.add_argument("--degree_matched_calib", action="store_true",
+                         help="For the 'clean' condition only, draw calibration via "
+                              "degree_matched_calib_sample() instead of uniform sampling from "
+                              "the zero-exposure pool, so calibration's degree distribution "
+                              "matches the full normal population's rather than being "
+                              "structurally biased low. Does not touch scores, unlike "
+                              "--use_degree_norm.")
+    parser.add_argument("--n_degree_bins", type=int, default=10,
+                         help="Only used with --degree_matched_calib.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -265,6 +365,7 @@ def main():
             trial_row, rank_rows = run_condition_trial(
                 condition, args.alpha, seed, args.n_epochs, device,
                 n_rank_points=args.n_rank_points, use_degree_norm=args.use_degree_norm,
+                degree_matched_calib=args.degree_matched_calib, n_degree_bins=args.n_degree_bins,
             )
             if trial_row is None:
                 print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
@@ -273,16 +374,23 @@ def main():
             all_ranks.extend(rank_rows)
             any_dagger = any(r["dagger_satisfied"] for r in rank_rows)
             floor_dagger = rank_rows[0]["dagger_satisfied"]
+            ks_extra = (f" degree_match_ks_p={trial_row['degree_match_ks_p']:.4f}"
+                        if not np.isnan(trial_row['degree_match_ks_p']) else "")
             print(f"  seed {seed}: auroc={trial_row['auroc']:.4f} "
                   f"n_discoveries={trial_row['n_discoveries']:4d} "
                   f"realized_fdr={trial_row['realized_fdr']:.3f} "
                   f"power={trial_row['power']:.3f} | "
                   f"floor_predicts={floor_dagger} any_r_predicts={any_dagger} "
-                  f"observed={trial_row['n_discoveries'] > 0}")
+                  f"observed={trial_row['n_discoveries'] > 0}{ks_extra}")
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "results", "logs")
     os.makedirs(out_dir, exist_ok=True)
-    suffix = "_degreenorm" if args.use_degree_norm else ""
+    if args.use_degree_norm:
+        suffix = "_degreenorm"
+    elif args.degree_matched_calib:
+        suffix = "_degreematched"
+    else:
+        suffix = ""
 
     trial_csv = os.path.join(out_dir, f"condition_comparison_pygod{suffix}.csv")
     with open(trial_csv, "w", newline="") as f:
