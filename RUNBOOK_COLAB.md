@@ -40,7 +40,8 @@ Run this first. If it fails, nothing downstream means anything.
 !python -m pytest tests/ -q
 ```
 
-Expect **17 passed** before the new file, **30 passed** with it.
+Expect **17 passed** — 4 from `test_normalize_equivalence.py`, 13 from the new
+`test_selection_bias.py`.
 
 The tests that matter are `test_valid_procedure_is_not_flagged_as_broken` and
 `test_planted_calibration_shift_is_detected` — a genuinely exchangeable trial
