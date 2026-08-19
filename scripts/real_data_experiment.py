@@ -330,7 +330,7 @@ DEGREE_NORM_BY_DATASET = {
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
                          trim_pct=0.01, use_sparse_prop=False, detector="dominant_ours",
-                         log_ranks=False, n_rank_points=25):
+                         log_ranks=False, n_rank_points=25, diagnostics_out=None):
     """log_ranks defaults to False and the trial-row return value is
     UNCHANGED in that case, so every existing call site and every existing
     output CSV's schema is untouched. When True, additionally computes
@@ -346,7 +346,14 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     cannot explain and the extended proposition was built to cover.
 
     Return value: if log_ranks=False, returns the trial dict alone (as
-    before). If log_ranks=True, returns (trial_dict, rank_rows)."""
+    before). If log_ranks=True, returns (trial_dict, rank_rows).
+
+    diagnostics_out: pass a dict to have it FILLED IN PLACE with the
+    intermediate quantities the selection-bias analysis needs -- the null
+    p-values, the calibration/test index sets, per-node scores and degrees.
+    Deliberately an out-parameter rather than another return value: this
+    function's return type already varies with log_ranks, and a third variant
+    would be a trap. Passing None (the default) changes nothing."""
     scores = score_nodes(detector, graph, features, labels, seed=seed,
                           n_epochs=n_epochs, device=device,
                           use_sparse_prop=use_sparse_prop, score_alpha=score_alpha)
@@ -444,6 +451,27 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     n_discoveries = discoveries.sum()
     realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
     power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
+
+    if diagnostics_out is not None:
+        # Null p-values ONLY -- the anti-conservativeness factor is a statement
+        # about the null distribution, so including anomalies here would make
+        # gamma meaningless. test_labels == 0 selects exactly the normal nodes
+        # that survived trimming, which is the population that must be
+        # exchangeable with calibration for BH's guarantee to hold.
+        null_mask = test_labels == 0
+        diagnostics_out.update({
+            "null_p_values": p_values[null_mask],
+            "all_p_values": p_values,
+            "test_labels": test_labels,
+            "calib_idx": calib_idx,
+            "test_idx": test_idx,
+            "scores": scores,
+            "normal_idx": normal_idx,
+            "exposure": exposure,
+            "eligible_normal_idx": eligible_normal_idx,
+            "n_calib": len(calib_idx),
+            "n_discoveries": int(discoveries.sum()),
+        })
 
     m_test = len(test_idx)
     m_1 = int(test_labels.sum())
