@@ -1,46 +1,55 @@
 """
 clean_selection_degree_diagnostic.py
 
-Tests a specific, falsifiable hypothesis raised by condition_comparison_pygod.py's
-result: realized FDR was SIGNIFICANTLY ABOVE nominal in the CLEAN condition
-(mean 0.132, d=0.837, p=0.0007) -- the one condition Proposition 1 proves has
-exact exchangeability -- while contaminated and adversarial were both safely
-at or below nominal. That is the reverse of what contamination-focused
-concerns would predict, and it means the exchangeability violation, if real,
-has nothing to do with contamination severity or adversarial selection.
+Tests structural-covariate hypotheses for condition_comparison_pygod.py's
+clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007, vs
+contaminated/adversarial both safely at or below nominal -- see
+theory/joint_discovery_threshold_proposition.md Part 3 for the full record).
 
-THE HYPOTHESIS. "Clean" selects calibration nodes by a strict topological
-filter: zero anomalous neighbors. That is not a random draw from the normal
-population -- it could systematically differ in DEGREE from the broader
-normal population that ends up in the test set, simply because exposure is a
-ratio over neighbor count (a normal node needs at least one anomalous
-neighbor among however many it has to be excluded from "clean", so very
-low-degree normal nodes are structurally easier to keep exposure-zero by
-chance). If dominant_pygod's scores correlate with degree AT ALL on this
-generator, and clean-selection shifts the degree distribution of calibration
-relative to test, that combination breaks exchangeability regardless of
-contamination -- a confound, not a finding about contamination robustness.
+DEGREE (checks 1-2, original hypothesis): "Clean" selects calibration nodes
+by a strict topological filter, zero anomalous neighbors, which is not a
+random draw and could systematically differ in degree from the broader
+normal population. CONFIRMED on a prior 10-seed run: clean-selected nodes
+have significantly lower degree (paired t=-24.959, p<0.0001) and
+dominant_pygod's score correlates with degree (Spearman r=0.56).
+condition_comparison_pygod.py's degree_matched_calib_sample() fix, built on
+this finding, closed roughly HALF the FDR gap (d: 0.837 -> 0.449) without
+touching scores -- real, but partial. The matching itself was imperfect in
+18/20 seeds (candidate pool structurally short on high-degree members), and
+a direct per-seed check found no significant correlation between match
+quality and residual FDR (Spearman r=-0.161, p=0.498). Degree is a real,
+partial contributor, not the whole story.
 
-This is EXACTLY the failure mode real_data_experiment.py's degree_normalize_
-scores() was built to correct for on real data (see degree_norm_diagnostic.py)
--- but neither the original synthetic pipeline (conformal_fdr.run_single_trial)
-nor condition_comparison_pygod.py applies any degree correction. If this
-hypothesis holds, that is the likely fix; if it does not, something else is
-going on and degree correction is not the answer.
+CLUSTERING COEFFICIENT (checks 3-4, new): tests whether a SECOND structural
+covariate explains some of the remaining gap. Local clustering coefficient
+is a natural second candidate specifically because the underlying generator
+is a stochastic block model with three anomaly clusters (GraphGenConfig
+n_anomaly_clusters=3) -- a normal node's local clustering structure could
+differ systematically depending on its position relative to these clusters,
+independent of raw degree, and reconstruction-based detectors are known to
+be sensitive to local neighborhood structure (that is the entire premise of
+DOMINANT's structure decoder).
 
-TWO INDEPENDENT CHECKS, both need to hold for the hypothesis to explain the
-result:
-  1. DEGREE CONFOUND CHECK: does the clean-selected calibration set have a
-     different degree distribution than the test set's normal population?
-     (Kolmogorov-Smirnov two-sample test + means/medians.)
-  2. SCORE-DEGREE CORRELATION CHECK: does dominant_pygod's raw score actually
-     correlate with degree among normal nodes on this synthetic generator?
-     (Spearman correlation, since the relationship need not be linear.)
+FOUR CHECKS. Degree and clustering are tested independently and reported
+separately -- do not average them into one combined verdict, since a real
+finding for one and a null finding for the other is itself informative and
+must not be blurred together:
+  1. DEGREE CONFOUND (repeat of the original check, for a fresh comparison
+     seed range -- results should replicate the prior 10-seed run closely;
+     if they don't, that is itself worth flagging, not silently accepted).
+  2. SCORE-DEGREE CORRELATION (repeat, same reasoning).
+  3. CLUSTERING CONFOUND: does clean-selected calibration have a different
+     local clustering coefficient distribution than the test-normal
+     population? (KS test.)
+  4. SCORE-CLUSTERING CORRELATION: does dominant_pygod's score correlate
+     with local clustering coefficient among normal nodes? (Spearman.)
 
-If check 1 is null (no degree difference) or check 2 is null (score doesn't
-track degree), the degree-confound hypothesis is NOT supported and the clean-
-condition FDR inflation needs a different explanation -- report that plainly,
-don't force the data to fit the hypothesis.
+If checks 3-4 are both null, clustering does not explain the residual gap
+and that should be reported as a genuine negative result, not treated as a
+failed attempt to hide. If they hold, that is a second real, partial
+contributor, analogous in status to degree -- likely still not the
+complete explanation, and should be reported with the same caveats degree
+was given (see Part 3 of the theory doc).
 
 Run on Colab:
   !python scripts/clean_selection_degree_diagnostic.py --n_seeds 10 --device cuda
@@ -52,6 +61,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import argparse
 import numpy as np
+import networkx as nx
 from scipy import stats
 
 from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
@@ -73,6 +83,12 @@ def run_trial(seed, n_epochs, device, calib_frac=0.9):
 
     degree = np.array([graph.degree(i) for i in normal_idx], dtype=float)
 
+    # nx.clustering computes local clustering coefficient for every node in
+    # one pass (more efficient than calling it per-node in a loop); index
+    # into the result dict in the same order as normal_idx.
+    clustering_all = nx.clustering(graph)
+    clustering = np.array([clustering_all[i] for i in normal_idx], dtype=float)
+
     exposure = np.zeros(len(normal_idx))
     for j, i in enumerate(normal_idx):
         neighbors = list(graph.neighbors(i))
@@ -91,29 +107,73 @@ def run_trial(seed, n_epochs, device, calib_frac=0.9):
     calib_mask = np.isin(normal_idx, calib_idx)
 
     calib_degree = degree[calib_mask]
-    test_normal_degree = degree[~calib_mask]  # the "remaining normal" that ends up in the test set
+    test_normal_degree = degree[~calib_mask]
+    calib_clustering = clustering[calib_mask]
+    test_normal_clustering = clustering[~calib_mask]
 
-    # CHECK 1: degree confound. Two-sample KS test, calib vs test-normal degree.
-    ks_stat, ks_p = stats.ks_2samp(calib_degree, test_normal_degree)
+    # CHECK 1: degree confound (repeat of prior run)
+    ks_stat_deg, ks_p_deg = stats.ks_2samp(calib_degree, test_normal_degree)
 
-    # CHECK 2: score-degree correlation among ALL normal nodes (not just calib/test
-    # split), since this checks a property of the detector, not of the split.
+    # CHECK 2: score-degree correlation (repeat)
     normal_scores = scores[normal_idx]
-    spearman_r, spearman_p = stats.spearmanr(normal_scores, degree)
+    spearman_r_deg, spearman_p_deg = stats.spearmanr(normal_scores, degree)
+
+    # CHECK 3: clustering confound (new)
+    ks_stat_clus, ks_p_clus = stats.ks_2samp(calib_clustering, test_normal_clustering)
+
+    # CHECK 4: score-clustering correlation (new)
+    spearman_r_clus, spearman_p_clus = stats.spearmanr(normal_scores, clustering)
 
     return {
         "seed": seed,
         "n_calib": n_calib,
         "n_test_normal": len(test_normal_degree),
         "calib_degree_mean": calib_degree.mean(),
-        "calib_degree_median": float(np.median(calib_degree)),
         "test_normal_degree_mean": test_normal_degree.mean(),
-        "test_normal_degree_median": float(np.median(test_normal_degree)),
-        "ks_stat": ks_stat,
-        "ks_p": ks_p,
-        "score_degree_spearman_r": spearman_r,
-        "score_degree_spearman_p": spearman_p,
+        "ks_p_degree": ks_p_deg,
+        "score_degree_spearman_r": spearman_r_deg,
+        "score_degree_spearman_p": spearman_p_deg,
+        "calib_clustering_mean": calib_clustering.mean(),
+        "test_normal_clustering_mean": test_normal_clustering.mean(),
+        "ks_p_clustering": ks_p_clus,
+        "score_clustering_spearman_r": spearman_r_clus,
+        "score_clustering_spearman_p": spearman_p_clus,
     }
+
+
+def report_check(name, calib_means, test_means, ks_ps, n_trials):
+    print(f"\n=== {name} confound (calib vs test-normal population) ===")
+    n_significant_ks = int(np.sum(ks_ps < 0.05))
+    print(f"Mean calib {name.lower()} across seeds: {calib_means.mean():.4f} +/- {calib_means.std():.4f}")
+    print(f"Mean test-normal {name.lower()} across seeds: {test_means.mean():.4f} +/- {test_means.std():.4f}")
+    print(f"KS test significant (p<0.05) in {n_significant_ks}/{n_trials} seeds")
+    paired_t = stats.ttest_rel(calib_means, test_means)
+    print(f"Paired t-test, calib vs test-normal mean {name.lower()} across seeds: "
+          f"t={paired_t.statistic:.3f}, p={paired_t.pvalue:.4f}")
+    holds = paired_t.pvalue < 0.05
+    if holds:
+        direction = "LOWER" if calib_means.mean() < test_means.mean() else "HIGHER"
+        print(f"  -> Clean-selected calibration nodes have SIGNIFICANTLY {direction} "
+              f"{name.lower()} than the test-set normal population.")
+    else:
+        print(f"  -> No significant {name.lower()} difference between calibration and "
+              f"test-normal populations.")
+    return holds
+
+
+def report_correlation(name, spearman_rs, spearman_ps, n_trials):
+    print(f"\n=== Does dominant_pygod's score correlate with {name.lower()}? ===")
+    n_significant_corr = int(np.sum(spearman_ps < 0.05))
+    print(f"Mean Spearman r (score vs {name.lower()}, normal nodes only): "
+          f"{spearman_rs.mean():.4f} +/- {spearman_rs.std():.4f}")
+    print(f"Significant correlation (p<0.05) in {n_significant_corr}/{n_trials} seeds")
+    holds = (n_significant_corr >= n_trials // 2) and (abs(spearman_rs.mean()) > 0.1)
+    if holds:
+        print(f"  -> dominant_pygod's score meaningfully correlates with {name.lower()} "
+              f"on this generator.")
+    else:
+        print(f"  -> No meaningful score-{name.lower()} correlation.")
+    return holds
 
 
 def main():
@@ -126,8 +186,9 @@ def main():
     device = args.device or ("cuda" if __import__("torch").cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     print("Detector: dominant_pygod\n")
-    print("Testing the degree-confound hypothesis for condition_comparison_pygod.py's")
-    print("clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007).\n")
+    print("Testing structural-covariate hypotheses for the clean-condition FDR")
+    print("inflation. Degree checks repeat the prior finding for a fresh seed range;")
+    print("clustering checks are new, testing a second candidate covariate.\n")
 
     results = []
     for seed in range(args.n_seeds):
@@ -136,73 +197,74 @@ def main():
             print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
             continue
         results.append(r)
-        print(f"  seed {seed}: calib_degree_mean={r['calib_degree_mean']:.2f} "
-              f"test_normal_degree_mean={r['test_normal_degree_mean']:.2f} "
-              f"KS_p={r['ks_p']:.4f} "
-              f"score~degree_spearman_r={r['score_degree_spearman_r']:.4f} "
-              f"(p={r['score_degree_spearman_p']:.2e})")
+        print(f"  seed {seed}: "
+              f"deg[calib={r['calib_degree_mean']:.2f} test={r['test_normal_degree_mean']:.2f} "
+              f"ks_p={r['ks_p_degree']:.4f} score_r={r['score_degree_spearman_r']:.3f}] "
+              f"clus[calib={r['calib_clustering_mean']:.4f} test={r['test_normal_clustering_mean']:.4f} "
+              f"ks_p={r['ks_p_clustering']:.4f} score_r={r['score_clustering_spearman_r']:.3f}]")
 
     if not results:
         print("\nNo valid trials -- nothing to report.")
         return
 
-    print("\n=== CHECK 1: Degree confound (calib vs test-normal population) ===")
-    calib_means = np.array([r["calib_degree_mean"] for r in results])
-    test_means = np.array([r["test_normal_degree_mean"] for r in results])
-    ks_ps = np.array([r["ks_p"] for r in results])
-    n_significant_ks = int(np.sum(ks_ps < 0.05))
-    print(f"Mean calib degree across seeds: {calib_means.mean():.2f} +/- {calib_means.std():.2f}")
-    print(f"Mean test-normal degree across seeds: {test_means.mean():.2f} +/- {test_means.std():.2f}")
-    print(f"KS test significant (p<0.05) in {n_significant_ks}/{len(results)} seeds")
-    paired_t = stats.ttest_rel(calib_means, test_means)
-    print(f"Paired t-test, calib vs test-normal mean degree across seeds: "
-          f"t={paired_t.statistic:.3f}, p={paired_t.pvalue:.4f}")
-    if paired_t.pvalue < 0.05:
-        direction = "LOWER" if calib_means.mean() < test_means.mean() else "HIGHER"
-        print(f"  -> Clean-selected calibration nodes have SIGNIFICANTLY {direction} "
-              f"degree than the test-set normal population. CHECK 1 SUPPORTS the "
-              f"degree-confound hypothesis.")
-    else:
-        print(f"  -> No significant degree difference between calibration and test-normal "
-              f"populations. CHECK 1 DOES NOT SUPPORT the degree-confound hypothesis.")
-
-    print("\n=== CHECK 2: Does dominant_pygod's score correlate with degree? ===")
-    spearman_rs = np.array([r["score_degree_spearman_r"] for r in results])
-    spearman_ps = np.array([r["score_degree_spearman_p"] for r in results])
-    n_significant_corr = int(np.sum(spearman_ps < 0.05))
-    print(f"Mean Spearman r (score vs degree, normal nodes only): "
-          f"{spearman_rs.mean():.4f} +/- {spearman_rs.std():.4f}")
-    print(f"Significant correlation (p<0.05) in {n_significant_corr}/{len(results)} seeds")
-    if n_significant_corr >= len(results) // 2 and abs(spearman_rs.mean()) > 0.1:
-        print(f"  -> dominant_pygod's score meaningfully correlates with degree on this "
-              f"generator. CHECK 2 SUPPORTS the degree-confound hypothesis.")
-    else:
-        print(f"  -> No meaningful score-degree correlation. CHECK 2 DOES NOT SUPPORT "
-              f"the degree-confound hypothesis.")
+    n = len(results)
+    check1 = report_check(
+        "Degree",
+        np.array([r["calib_degree_mean"] for r in results]),
+        np.array([r["test_normal_degree_mean"] for r in results]),
+        np.array([r["ks_p_degree"] for r in results]),
+        n,
+    )
+    check2 = report_correlation(
+        "degree",
+        np.array([r["score_degree_spearman_r"] for r in results]),
+        np.array([r["score_degree_spearman_p"] for r in results]),
+        n,
+    )
+    check3 = report_check(
+        "Clustering coefficient",
+        np.array([r["calib_clustering_mean"] for r in results]),
+        np.array([r["test_normal_clustering_mean"] for r in results]),
+        np.array([r["ks_p_clustering"] for r in results]),
+        n,
+    )
+    check4 = report_correlation(
+        "clustering coefficient",
+        np.array([r["score_clustering_spearman_r"] for r in results]),
+        np.array([r["score_clustering_spearman_p"] for r in results]),
+        n,
+    )
 
     print("\n=== Verdict ===")
-    check1 = paired_t.pvalue < 0.05
-    check2 = (n_significant_corr >= len(results) // 2) and (abs(spearman_rs.mean()) > 0.1)
+    print(f"Degree confound: check1={check1}, check2={check2}")
     if check1 and check2:
-        print("BOTH checks support the hypothesis: clean-selection biases degree, AND the")
-        print("detector's score tracks degree. The clean-condition FDR inflation is likely")
-        print("a degree confound, not a genuine exchangeability violation from contamination.")
-        print("Next step: test whether applying degree_normalize_scores() (already built for")
-        print("real data) removes the inflation on synthetic data too.")
-    elif check1 and not check2:
-        print("CHECK 1 holds (degree differs) but CHECK 2 does not (score doesn't track")
-        print("degree meaningfully). The degree confound exists structurally but doesn't")
-        print("appear to explain the FDR inflation through THIS detector's scores. Do not")
-        print("apply degree normalization on the strength of this result alone.")
-    elif check2 and not check1:
-        print("CHECK 2 holds (score tracks degree) but CHECK 1 does not (no degree")
-        print("difference between calib and test-normal). The detector is degree-sensitive")
-        print("but clean-selection doesn't create a degree confound on this generator --")
-        print("the FDR inflation needs a different explanation.")
+        print("  Degree confound REPLICATED (consistent with the prior 10-seed run and")
+        print("  the partial fix already found in condition_comparison_pygod.py).")
     else:
-        print("NEITHER check supports the degree-confound hypothesis. Report this plainly:")
-        print("the clean-condition FDR inflation is not explained by a degree confound and")
-        print("needs a different investigation before it goes anywhere near the paper.")
+        print("  Degree confound DID NOT REPLICATE as found previously -- investigate before")
+        print("  trusting either this run or the prior one; do not silently prefer one.")
+
+    print(f"\nClustering confound: check3={check3}, check4={check4}")
+    if check3 and check4:
+        print("  BOTH clustering checks hold. Clustering coefficient is a SECOND real")
+        print("  candidate contributor to the residual FDR inflation degree-matching left")
+        print("  unexplained. Next step: test a clustering-matched (or joint degree+")
+        print("  clustering-matched) calibration sample, analogous to")
+        print("  degree_matched_calib_sample(), and check whether it closes more of the")
+        print("  remaining gap (target: d < 0.449, the degree-only result).")
+    elif check3 and not check4:
+        print("  Clustering confound exists structurally (check3) but the detector's score")
+        print("  doesn't track it (check4 null) -- unlikely to explain the FDR inflation")
+        print("  through this detector's scores specifically.")
+    elif check4 and not check3:
+        print("  Score is clustering-sensitive (check4) but clean-selection doesn't bias")
+        print("  clustering (check3 null) -- clustering is not a confound on this generator")
+        print("  even though the detector could in principle be sensitive to it.")
+    else:
+        print("  NEITHER clustering check holds. Clustering coefficient does NOT explain the")
+        print("  residual gap -- report this as a genuine negative result. The remaining")
+        print("  ~50% of the clean-condition FDR inflation gap is still unexplained by any")
+        print("  covariate tested so far.")
 
 
 if __name__ == "__main__":
