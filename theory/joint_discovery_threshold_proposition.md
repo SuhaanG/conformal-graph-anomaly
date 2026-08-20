@@ -540,119 +540,158 @@ established until at least prediction 2 has been run.
 
 ---
 
-## Part 5: The falsification test ran. Part 4 did NOT survive it.
+## Part 5: The falsification test ran. Verdict is UNDERPOWERED, not falsified.
 
-**Status: Part 4's degree mechanism is NOT confirmed. Do not write it up as
-Theorem 2. The selection effect is real and much larger than we thought, but
-degree does not explain it.**
+**Status: Part 4 is neither confirmed nor refuted. Within the regime where its
+own stated precondition holds, the prediction is supported (rho=+0.81,
+p=0.0149), but that rests on a single detector and collapses to p=0.39 without
+it. Do not write Theorem 2 yet. The decisive experiment is cheap and is
+specified below.**
 
 Run: `selection_bias_matrix.py`, 5 detectors x 4 real graphs x 5 seeds, clean
-condition, commit b320128.
+condition, commit b320128. Results in `results/published/`.
 
-### What the script printed, and why it was wrong
+### The script's printed verdict was wrong, and the error was ours
 
-The script reported `VERDICT: consistent with Part 4`, with all three
-statistics agreeing (mean_p rho=-0.729, ks rho=+0.877, gamma_hat rho=+0.903,
-all p<0.001). That verdict does not hold up, for a reason that is our error,
-not the data's.
+It reported `VERDICT: consistent with Part 4`, with all three statistics
+agreeing at p<0.001. That does not hold, because `gamma_hat` was measuring the
+wrong region of the distribution.
 
-**gamma_hat was measuring the wrong part of the distribution.** It takes a sup
-over calibration ranks r >= min_rank, with min_rank = n_calib//4. But BH does
-not cut there. On weibo, n_calib ~ 5659 so min_rank ~ 1250, while BH's realized
-threshold t = alpha*k/m = 0.0022 corresponds to rank **11**. The statistic was
-looking 112x further into the bulk than the procedure it is supposed to
-describe. On amazon the mismatch is 4x rather than 112x, which is why the
-effect still showed there.
+`gamma_hat` sups over calibration ranks r >= n_calib//4. BH does not cut there.
+On weibo n_calib ~ 5636, so min_rank ~ 1409, while BH's realized threshold
+t = alpha*k/m = 0.0044 corresponds to calibration rank ~25. The statistic
+described the bulk while BH operated in the extreme left tail. The min_rank
+default was introduced to control variance -- an exchangeable null at
+min_rank=10 has p95 1.57, which would swamp the effect -- and it does that, but
+it bought the variance reduction by measuring somewhere the procedure never
+goes.
 
-Recomputing gamma at the threshold where BH actually cut, from the realized
-FDR (gamma = V / (t * m_0), all quantities observed):
+Recomputed at the BH operating point, using the CSV's real n_null and m_test:
 
-| dataset | detector | sdeg | gamma_hat | gamma@BH | FDR |
-|---|---|---|---|---|---|
-| amazon | dominant_pygod | +0.918 | 3.29 | 10.49 | 0.901 |
-| amazon | ocgnn | +0.439 | 1.24 | 2.09 | 0.179 |
-| reddit | dominant_pygod | +0.606 | 3.62 | 9.80 | 0.913 |
-| reddit | gae | +0.401 | 1.67 | 0.97 | 0.090 |
-| tolokers | dominant_pygod | +0.899 | 2.90 | 9.61 | 0.635 |
-| weibo | anomalydae | **-0.126** | 1.12 | **7.41** | 0.648 |
-| weibo | dominant_ours | **-0.125** | 1.07 | **7.43** | 0.649 |
-| weibo | gae | **-0.093** | 1.02 | **7.02** | 0.613 |
-| weibo | dominant_pygod | +0.447 | 1.29 | 7.15 | 0.625 |
+    Spearman(sdeg, gamma_hat) over discovering cells   rho=+0.813  p=0.0007
+    Spearman(sdeg, gamma@BH)  over discovering cells   rho=+0.423  p=0.1497
 
-    Spearman(sdeg, gamma_hat) over discovering cells: rho=+0.813, p=0.0007
-    Spearman(sdeg, gamma@BH)  over discovering cells: rho=+0.462, p=0.1309
+### Weibo is not a counterexample -- it falls outside the assumptions
 
-Measured where BH operates, the degree correlation is not significant.
+The apparent refutation was that weibo shows FDR 0.61-0.65 for detectors whose
+score-degree correlation is NEGATIVE, which Part 4 says should be conservative
+and show no violation.
 
-### The assumption-free version of the refutation
+But (A1) -- q(d) = P(clean-eligible | degree) non-increasing -- **fails on
+weibo and only on weibo**. The runner measured this directly:
 
-Within weibo alone, the graph, the selection filter, m_0 and m_1 are all
-identical and only the detector changes. FDR is a ratio on the same test set,
-so no estimate of n_calib or m_0 enters:
+| dataset | clean pool | % of normals | (A1) monotone | Kendall tau |
+|---|---|---|---|---|
+| amazon | 265 | 2% | 25/25 seeds | -0.92 |
+| reddit | 9778 | 92% | 25/25 seeds | -0.91 |
+| tolokers | 801 | 9% | 25/25 seeds | -0.92 |
+| **weibo** | 5636 | 70% | **0/25 seeds** | **-0.02** |
 
-    anomalydae      sdeg=-0.126   FDR=0.648
-    dominant_ours   sdeg=-0.125   FDR=0.649
-    gae             sdeg=-0.093   FDR=0.613
-    dominant_pygod  sdeg=+0.447   FDR=0.625
-    ocgnn           sdeg=-0.120   FDR=0.041
+On weibo the clean filter does not select on degree at all. Part 4 therefore
+predicts nothing there -- no tilt, hence no degree-mediated violation -- and
+that is what is observed. Testing the theory on weibo was testing it outside
+its own scope.
 
-    Spearman(sdeg, FDR) within weibo: rho=-0.500, p=0.3910
+Two facts make this a real point in the theory's favour rather than a
+post-hoc rescue:
 
-Part 4 predicts detectors with NEGATIVE score-degree correlation are
-conservative and should show no violation. Three of them sit at FDR 0.61-0.65
-against a nominal 0.10. The mechanism as stated does not survive this.
+  - (A1) was written into Part 4 in commit ad50360, which is an ANCESTOR of the
+    run commit b320128. The criterion was pre-registered.
+  - `q_is_monotone` was computed by the runner during the run and is a column
+    in the output CSV. It was not derived afterwards to fit the result.
 
-### What IS true, and is a bigger finding than the one we were chasing
+The criterion was stated in advance, measured automatically, and it
+discriminated correctly. Restricted to the three datasets where (A1) holds,
+measured at the BH operating point:
 
-The clean condition fails catastrophically on real graphs, far beyond the
-0.132 seen on synthetic. Across the 13 cells that produced any discoveries:
+    n=8 cells    Spearman(sdeg, gamma@BH)   rho=+0.8095   p=0.0149
 
-    median realized FDR = 0.613   against nominal alpha = 0.10
-    7 of 13 cells exceed FDR 0.50
+### Why this still is not a confirmation
 
-This is not a subtle inflation. It is the guarantee failing by 6-9x, on the
-one condition Proposition 1 proves is exchangeable, on every real dataset
-tested, under detectors spanning three architectural families.
+    all cells where A1 holds        n=8   rho=+0.8095   p=0.0149
+    drop dominant_pygod             n=5   rho=+0.5000   p=0.3910
 
-Degree modulates the severity -- amazon and tolokers do order roughly by
-score-degree dependence, and dominant_pygod is worst everywhere -- but it does
-not cause it, because weibo breaks identically for detectors that are
-negatively degree-correlated.
+The result rests on one detector. The cause is a coverage problem rather than a
+subtle statistical one: across all 100 trials, **every cell with sdeg > 0.5 is
+dominant_pygod.** Per-detector sdeg ranges:
 
-### Why the two ideas got conflated
+    dominant_pygod  [+0.44, +0.92]
+    ocgnn           [-0.22, +0.67]
+    gae             [-0.20, +0.41]
+    anomalydae      [-0.31, +0.38]
+    dominant_ours   [-0.23, +0.14]
+
+Removing dominant_pygod deletes the entire high end of the dose-response curve,
+so n=5 has no power to detect anything. This is the objection a referee will
+raise; it is correct as stated, and it is fixable.
+
+### The decisive experiment: sweep degree sensitivity within one detector
+
+Relying on five detectors that happen to differ in degree sensitivity is a weak
+design. Detector identity varies alongside the proposed cause, and only one
+detector reaches the high end. Manipulate the cause directly instead.
+
+`degree_normalize_scores` divides by log1p(degree). Generalise the exponent:
+
+    score_beta = score / log1p(degree) ** beta,    beta in [-0.5, 1.5]
+
+beta < 0 AMPLIFIES degree sensitivity; beta = 0 leaves scores untouched;
+beta = 1 is the existing correction; beta > 1 over-corrects into negative
+dependence. Sweeping beta on ONE detector and ONE graph gives a continuous
+dose-response curve in sdeg with:
+
+  - no cross-detector confound (same architecture, same weights, same graph,
+    same calibration frame -- only the score transform moves)
+  - dense coverage of the whole sdeg range, including above 0.5
+  - as many points as compute allows, instead of 5
+  - a built-in internal control: gamma should rise and fall with sdeg as beta
+    varies, and should cross gamma ~ 1 near whatever beta makes the score
+    degree-neutral
+
+Run it on amazon and tolokers, where (A1) holds strongly (tau ~ -0.92) and the
+clean filter is genuinely harsh (2% and 9% of normals retained). If gamma
+tracks sdeg along that curve, Part 4 has real support from a proper causal
+design rather than an observational one. If it does not, Part 4 is dead, and
+unambiguously so rather than underpowered.
+
+This subsumes prediction 2 and should replace it as the primary test.
+
+### Separately: what breaks weibo is unexplained
+
+Weibo shows median FDR 0.634 with no degree tilt and, for three of five
+detectors, negative score-degree correlation. gamma at the BH threshold is
+~7.0-7.4 there regardless of detector. Something dataset-level is breaking
+exchangeability that has nothing to do with degree. This is a genuine open
+question and probably a second finding rather than a nuisance. Weibo is also
+the one dataset with a measurable contamination signal (exposure->score
+r=0.111, p=1.4e-23, surviving control for degree), which may or may not be
+connected.
+
+### The empirical result that depends on none of this
+
+Across the 13 cells that produced any discoveries, median realized FDR is 0.613
+against nominal 0.10, with 7 of 13 above 0.50. Per dataset: amazon 0.900,
+tolokers 0.635, weibo 0.634, reddit 0.167.
+
+The clean condition -- the one condition Proposition 1 proves is exchangeable
+-- fails by up to 9x on real graphs, across detectors spanning three
+architectural families. That stands regardless of which mechanism explains it,
+and it is currently the strongest result in the project.
+
+### Why FDR is not a clean readout of the violation
 
 FDR = V/(V+S). Anti-conservativeness raises V; weak detector signal lowers S.
-Both inflate FDR, and the matrix confounded them. Synthetic runs at AUROC 1.0,
-where S is maximal, so even a real violation only showed as 0.132. On weibo,
-where power is ~0.12, a modest left-tail excess produces FDR 0.65. The severity
-of the FDR damage is therefore NOT a clean readout of the exchangeability
-violation, and gamma must be measured directly on the null p-values at the BH
-operating point rather than inferred from FDR.
+Both inflate FDR, and the matrix confounded them. Synthetic runs at AUROC 1.0
+where S is maximal, so a real violation appeared only as 0.132. Weibo runs at
+power ~0.12, where a modest left-tail excess produces 0.65. Measure gamma
+directly on the null p-values at the BH operating point; never infer the
+violation from FDR alone.
 
-### What to do next, in order
+### Next steps, in order
 
-1. **Fix the estimator to measure where BH cuts.** min_rank = n_calib//4 was
-   introduced to control noise (an exchangeable null at min_rank=10 has p95
-   1.57) and it does that, but it made the statistic irrelevant. The fix is to
-   evaluate the left tail at small fixed t and control variance by POOLING null
-   p-values across seeds within a cell, not by moving t.
-2. **Re-run the matrix** and re-test prediction 2 at the corrected operating
-   point, with the block permutation and within-detector analyses.
-3. **Find what actually breaks weibo.** Same filter, same graph, five
-   detectors, four of them at FDR ~0.63 regardless of degree behaviour. That is
-   a dataset-level property. Candidates: the clean pool is 5659 of 8058 normals
-   (~70%), so "clean" is barely a filter there and the calibration set is
-   nearly the whole normal population -- yet exchangeability still fails, which
-   points at something other than selection.
-4. Only after 1-3: decide whether any theorem survives, and about what.
-
-### Honest framing for the paper as it stands
-
-The defensible claim today is empirical and strong: *constructing a calibration
-set by topological filtering breaks conformal FDR control on real graphs,
-severely and reproducibly, across detectors and datasets.* The degree-tilt
-explanation in Part 4 is a hypothesis that the data does not support, and
-should be presented as a mechanism we tested and rejected, not as a theorem.
-That is still a real contribution -- a documented, reproducible failure of a
-guarantee people rely on -- but it is a different paper from the one Part 4
-described.
+1. **Run the beta sweep.** Decisive, cheap, and replaces prediction 2.
+2. Re-run the matrix with `left_tail_gamma` (added after this run) so the
+   y-axis is measured where BH cuts, plus the block-permutation and
+   within-detector analyses.
+3. Investigate weibo on its own terms.
+4. Only then decide what, if anything, becomes a theorem.
