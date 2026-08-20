@@ -1009,3 +1009,59 @@ shrinking.
 Every summary statistic in this codebase must exclude zero-discovery cells
 before averaging. Prior instances: degree normalization (Part 3), the beta
 sweep (Part 5), the strategy-comparison verdict, and now this.
+
+---
+
+## Part 8: The degree-baseline check ran. 16/20 cells cannot beat degree.
+
+`scripts/degree_baseline_check.py`, 5 detectors x 4 datasets x 3 seeds,
+commit 4937701.
+
+    dataset    best free baseline         best detector          gap
+    amazon     0.7446 (neg_degree)        0.8589 (gae)          +0.1143
+    reddit     0.5561 (degree)            0.5769 (dominant_ours) +0.0207
+    tolokers   0.5596 (degree)            0.5618 (ocgnn)        +0.0022
+    weibo      0.7782 (neg_degree)        0.7733 (dominant_ours) -0.0049
+
+16 of 20 detector-dataset cells fail to beat the training-free baseline by
+more than 0.02 AUROC. On tolokers and weibo no detector clears the bar at all.
+This supports the NeurIPS D&B framing (handoff section 8.1): reported AUROC on
+these benchmarks does not, by itself, distinguish a trained detector from a
+degree lookup table.
+
+### The wrinkle: dominant_pygod, the detector behind every Part 6/7 result,
+### is itself close to a degree proxy on 3 of 4 datasets
+
+    dataset    dominant_pygod AUROC   best free baseline   sdeg
+    amazon           0.3834               0.7446 (neg_deg) +0.902
+    tolokers         0.5303               0.5596 (degree)  +0.909
+    weibo            0.5352               0.7782 (neg_deg) +0.426
+    reddit           0.5478               0.5561 (degree)  +0.579
+
+On amazon it does not merely tie the baseline, it LOSES by 0.36 -- its raw
+score ranks in the wrong direction relative to which nodes are actually
+anomalous there. This is consistent with the score-gap law, not contradicted
+by it: dominant_pygod's score being near-collinear with degree (sdeg 0.43-0.91)
+is exactly why the clean-condition degree shift (2A.2, gap_d -1.25 on amazon)
+produced such an extreme gamma (13.22) when measured through it.
+
+But it raises the obvious referee question: is the selection-bias failure
+GENERAL, or an artifact of choosing a near-degenerate detector? On amazon,
+detectors with LOW degree sensitivity beat the baseline outright: gae +0.114
+(sdeg=-0.091), anomalydae +0.107 (sdeg=-0.081), dominant_ours +0.081
+(sdeg=-0.083).
+
+### The decisive follow-up, not yet run
+
+Rerun `calibration_strategy_comparison.py --dataset amazon --detector gae`.
+gae has genuine signal (beats degree by 0.114) and near-zero, slightly negative
+degree sensitivity -- the opposite profile from dominant_pygod.
+
+  - If clean calibration STILL produces gamma >> 1 for gae, the selection-bias
+    mechanism holds even for a detector doing real detection work, which is
+    the strong and general version of the claim this paper needs.
+  - If gae's clean gamma is ~1, the amazon gamma=13.22 result was substantially
+    a degree-proxy artifact of dominant_pygod specifically, and the paper must
+    say so rather than lead with that number.
+
+Either outcome is reportable. Do not skip this to avoid the second one.
