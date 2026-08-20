@@ -921,3 +921,91 @@ obvious to a reconstruction detector regardless of features. p_aa is the real
 difficulty knob and the sweep now varies it (0.005 -> 0.30). Note the frozen
 detector cannot validate this locally -- its structure decoder is dead, so its
 AUROC is feature-only and insensitive to p_aa by construction.
+
+---
+
+## Part 7: The score gap is the operative quantity, and it is deployable
+
+### The law
+
+Across every matched-frame cell run so far -- 3 datasets, 2 detectors, 6
+selection rules, 17 cells -- the standardized score gap between calibration and
+test-normals predicts the exchangeability violation:
+
+    Spearman(gap_d, gamma) = -0.7285,  p = 9.11e-04
+
+and it predicts SIGN, not just magnitude:
+
+    amazon  clean    gap -1.252  (calib 7x LOWER degree)   gamma 13.22  broken
+    weibo   clean    gap -0.078                            gamma  1.42  mild
+    reddit  gae clean gap -0.065                           gamma  1.04  ~valid
+    ...     every matched rule, |gap| < 0.05               gamma ~1     valid
+    weibo   exposed  gap +0.145  (calib HIGHER degree)     gamma  0.23  conservative
+    reddit  exposed  gap +0.435  (calib 5x HIGHER degree)  gamma  0.31  conservative
+
+Calibration scoring LOWER than test makes the procedure anti-conservative;
+scoring HIGHER makes it conservative; matched gives validity. Degree is one
+route to a gap, exposure is another, and neither is privileged -- what matters
+is the gap itself.
+
+### What is and is not a contribution here
+
+**Be honest about this.** gap_d and gamma are both functions of the same two
+score distributions, so "a shift in scores produces a shift in p-values" is
+close to definitional and a referee will say so. The gap -> gamma link is NOT
+the contribution.
+
+The contributions are the parts that are empirical and surprising:
+
+  1. **The selection rule causes the gap, at a magnitude nobody would guess.**
+     Filtering calibration for "cleanliness" produces a 7x degree gap on amazon
+     (105.6 vs 737.2) and a 13x FDR violation. Nothing about the rule announces
+     this.
+  2. **True contamination does NOT cause a gap.** Calibration containing 5% and
+     10% actual anomalies stays within 2% of the test degree and is
+     exchangeable (gamma 0.72-0.83). The failure mode the literature guards
+     against is benign.
+  3. **The gap is computable WITHOUT LABELS.** It is a two-sample statistic on
+     scores you already have at deployment time. That makes it an operational
+     precondition check, not a post-hoc diagnosis: measure the standardized gap
+     between calibration and test scores, and if it is large, the FDR guarantee
+     is void regardless of what the method promises.
+
+Point 3 is the practical payload and it is what the paper should lead with.
+
+### AUROC on the synthetic generator is a degree measurement
+
+The p_aa sweep produced an independent finding that is arguably more damaging
+than anything above. Sweeping anomaly-anomaly density with features held fixed:
+
+    p_aa     E[deg|anom]  E[deg|norm]  ratio   AUROC
+    0.005       32.2         72.8      0.44    0.0793
+    0.010       36.0         72.8      0.49    0.1038
+    0.020       43.5         72.8      0.60    0.0661
+    0.050       66.0         72.8      0.91    0.3337
+    0.100      103.5         72.8      1.42    0.8597
+    0.300      253.5         72.8      3.48    1.0000
+
+AUROC crosses 0.5 exactly where the anomaly/normal degree ratio crosses 1.0.
+The features are IDENTICAL at every level. dominant_pygod's AUROC on this
+generator is a measurement of whether anomalies were planted as dense blocks,
+nothing more -- consistent with its score-degree Spearman of +0.918 on amazon.
+
+The AUROC 1.0000 that every synthetic result in this project was built on is
+therefore not detection. It is degree ranking that happens to coincide with the
+planted structure. Flip p_aa and the same detector on the same features ranks
+anomalies at the BOTTOM (AUROC 0.066).
+
+### A recurring error worth stating once
+
+The difficulty sweep's printed verdict ("the effect SHRINKS on harder tasks")
+is WRONG, and for the fifth time in this project the cause is zero-discovery
+levels contaminating a summary statistic. Four of its six levels produced no
+discoveries, so their FDR gap is trivially 0.000; averaging those into the
+"harder" group manufactured the conclusion. The two levels where measurement
+is possible give gaps of 0.017 (AUROC 0.86) and 0.016 (AUROC 1.00) -- flat, not
+shrinking.
+
+Every summary statistic in this codebase must exclude zero-discovery cells
+before averaging. Prior instances: degree normalization (Part 3), the beta
+sweep (Part 5), the strategy-comparison verdict, and now this.
