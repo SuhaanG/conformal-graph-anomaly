@@ -79,9 +79,61 @@ is the principled candidate and has not been implemented.
 
 ---
 
-## Running right now
+## The beta sweep came back (amazon). Read this before anything else.
 
-`degree_sensitivity_sweep.py --dataset amazon` (job 3, `beta_amazon2.log`).
+Verdict printed: **OVERSHOOT**. gamma at sdeg=0 is 0.066, not the ~1.0 Part 4
+predicts; gamma crosses 1 at sdeg=+0.668. But the label undersells what the
+run actually established, in both directions.
+
+    beta    sdeg    gamma   mean_p    disc     fdr   power
+   -0.50  +0.935    15.65   0.1263    3526   0.911   0.383
+   +0.00  +0.918    15.57   0.1365    3447   0.901   0.415
+   +0.50  +0.885    14.46   0.1599    3403   0.871   0.535
+   +0.75  +0.849    11.53   0.1858    2660   0.873   0.412
+   +1.00  +0.778     5.19   0.2272       0   0.000   0.000
+   +1.25  +0.646     0.13   0.2895       0   0.000   0.000
+   +1.50  +0.481     0.09   0.3636       0   0.000   0.000
+   +2.00  -0.026     0.07   0.5926       0   0.000   0.000
+   +2.50  -0.617     0.05   0.7901       0   0.000   0.000
+   +3.00  -0.849     0.04   0.8537       0   0.000   0.000
+
+**What it CONFIRMS (this is new, and it favours Part 4).** gamma swings 391x
+(15.65 -> 0.04) purely from reweighting scores by degree. Conformal p-values are
+RANK statistics: if calibration and test-normal shared the same joint
+(score, degree) distribution, this transform would move both identically and
+gamma could not budge. It budges enormously. So calibration and test-normal
+demonstrably differ along degree — which is Part 4 steps 1 and 2, measured
+directly rather than assumed. The direction matches too: calibration is
+degree-biased LOW (A1, tau=-0.92) and scores rise with degree (sdeg=+0.92), so
+calibration scores sit too low, test points beat them too easily, and the
+procedure is anti-conservative at gamma=15.6. That is exactly the predicted
+failure direction.
+
+**What it FALSIFIES.** The point prediction. gamma reaches 1 at sdeg=+0.668,
+not at sdeg=0, and keeps falling to 0.066 by the time scores are degree-neutral.
+The reason is visible in the mean_p column, which rises monotonically 0.126 ->
+0.854: beta is not a clean de-confounder. It penalises HIGH-degree nodes, and
+calibration is LOW-degree, so calibration gains relative to test at every step.
+Global score-degree correlation among all normals is simply the wrong summary
+statistic — what governs validity is the calibration-vs-test gap, and that
+closes before global degree-neutrality does.
+
+**The most useful result, and it is a negative one.** No beta both works and
+controls FDR. Every level with discoveries has FDR >= 0.871; every level near
+nominal has zero discoveries and zero power. The procedure goes straight from
+broken-with-discoveries to conservative-with-none, never passing through
+valid-and-useful. **This rules out the entire family of score-level degree
+corrections as a remedy** — including the degree normalization already in the
+codebase. That is worth a paragraph in the paper on its own.
+
+Remaining candidate fix: weighted conformal (Tibshirani et al. 2019) with
+weights ~ 1/q(d). It acts on the SELECTION rather than the scores, which is the
+half of the problem beta cannot touch.
+
+Still to run: the same sweep on tolokers, to check the 391x swing and the
+crossing point replicate on a second graph where (A1) holds.
+
+## Previously running
 
 This is the decisive test. It manipulates degree sensitivity directly via
 `score / log1p(degree)**beta` on one detector, one graph, one fixed calibration
