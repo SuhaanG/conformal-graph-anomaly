@@ -46,13 +46,15 @@ experiment in this repo was measuring.**
 | **Calibration SELECTION breaks FDR control** | **CONFIRMED on real data, causally, at matched frames.** gamma 13.22 vs 0.82 on amazon (2A.2). This is the paper |
 | **The score-gap law** | **CONFIRMED.** Spearman(gap, gamma) = -0.73, p=9.1e-04 over 17 cells, predicts sign and magnitude (2A.3) |
 | **True contamination is HARMLESS** | **CONFIRMED.** 5% and 10% real anomalies in calibration stay exchangeable (2A.2) |
-| **Benchmark AUROC may measure degree** | **STRONG HYPOTHESIS, one run from resolution** (2A.4). This is the Tier-1 lottery ticket |
+| **Benchmark AUROC largely measures degree** | **CONFIRMED. 16 of 20 cells cannot beat a degree lookup** (2A.4) |
+| **The mechanism is CONDITIONAL on the detector** | **CONFIRMED by controlled experiment** (2A.4b). Same filter, same 7x degree gap, gamma 13.22 for pygod vs 0.76 for gae |
+| **A working configuration exists** | **YES.** gae + unfiltered calibration on amazon: FDR 0.059, 101 discoveries, power 0.116 (2A.4b) |
 | Discovery-threshold proposition (Part 1) | **VALID** as a sufficient condition, and it explains why true contamination is safe |
 | Part 4 degree-tilt theorem | **SUPERSEDED** by Part 7. Degree was one channel, not the mechanism |
-| Detector power under valid calibration | **NEAR ZERO.** 0 discoveries on amazon, 3 on reddit out of 366 anomalies |
+| Detector power under valid calibration | **DEPENDS ON THE DETECTOR.** 0 for pygod on amazon; 101 (power 0.116, FDR 0.059) for gae (2A.4b) |
 | Synthetic study | **VACUOUS.** AUROC 1.0 is a degree artifact of p_aa=0.3 (2A.4) |
 | Current paper draft | **NOT SUBMITTABLE.** Wrong premise plus the factual errors in 6.4 |
-| Venue | NeurIPS D&B if 2A.4 lands, else TNSE. See section 8 (rewritten) |
+| Venue | AISTATS (Oct deadline) as the real attempt, TNSE as the fallback. NeurIPS D&B deadline is ~May 2027, too far. Section 8 |
 
 ---
 
@@ -174,16 +176,70 @@ that every synthetic result in this project rests on is not detection -- it is
 degree ranking coinciding with the planted block structure. Flip p_aa and the
 same detector on the same features scores 0.066.
 
-**`scripts/degree_baseline_check.py` decides whether this generalises to the
-real benchmarks.** It is ~15 minutes and it is the single highest-value run
-outstanding. If trained detectors tie or lose to a degree lookup on real
-graphs, the claim becomes "benchmark AUROC in graph anomaly detection
-substantially measures node degree", which is a NeurIPS Datasets & Benchmarks
-paper.
+**RESOLVED. `degree_baseline_check.py` ran: 16 of 20 detector-dataset cells
+fail to beat an untrained degree lookup by more than 0.02 AUROC.**
 
-### 2A.5 The uncomfortable result
+    dataset    best free baseline         best detector           gap
+    amazon     0.7446 (neg_degree)        0.8589 (gae)          +0.1143
+    reddit     0.5561 (degree)            0.5769 (dominant_ours) +0.0207
+    tolokers   0.5596 (degree)            0.5618 (ocgnn)        +0.0022
+    weibo      0.7782 (neg_degree)        0.7733 (dominant_ours) -0.0049
 
-Under a VALID calibration rule, these detectors find almost nothing:
+On tolokers and weibo NO detector clears the bar. The claim "benchmark AUROC in
+graph anomaly detection substantially measures node degree" is now supported by
+measurement, not conjecture. Full table in theory doc Part 8.
+
+Note what it also revealed: dominant_pygod -- the detector behind every Part
+6/7 result -- itself LOSES to the baseline on 3 of 4 datasets (amazon 0.383 vs
+0.745). That raised an obvious referee question, which 2A.4b answers.
+
+### 2A.4b The controlled experiment: the mechanism is REAL and CONDITIONAL
+
+Running the strategy comparison on amazon with `gae` instead of
+`dominant_pygod` isolates the mechanism, because the two detectors have
+opposite degree profiles on an otherwise identical setup:
+
+                            dominant_pygod        gae      ratio
+        calib_deg                  105.6        106.3       1.0x
+        test_deg                   737.2        771.3       1.0x
+        degree ratio               0.143        0.138       1.0x
+        sdeg (score~degree)       +0.902       -0.026      34.7x
+        gap_d (score gap)         -1.252       -0.038      32.9x
+        gamma                      13.22         0.76      17.4x
+
+**The clean filter produces the SAME 7x degree gap for both.** That part is a
+property of the graph and the rule. Whether it becomes a validity failure
+depends entirely on whether the score responds to degree -- it does for pygod
+(broken), it does not for gae (valid).
+
+This is the causal chain demonstrated with the covariate shift HELD FIXED and
+only the score's sensitivity varying. It does not weaken the selection-bias
+finding; it completes it, and it pre-empts the referee objection rather than
+leaving it open.
+
+The correct statement of the claim is therefore: **calibration filtering is
+CONDITIONALLY dangerous, and the condition is measurable.** That conditionality
+is why the label-free score-gap diagnostic (2A.3) is the paper's deliverable --
+you cannot tell from the filter alone whether you are in trouble.
+
+**And it gives the project its first working configuration:**
+
+    gae + random_full on amazon:
+        n_calib=4000   gamma=0.96   disc=101   FDR=0.059   power=0.116
+
+Valid (FDR below the nominal 0.10), useful (11.6% of the 821 anomalies), with a
+detector that beats the degree baseline by +0.114 AUROC. Every earlier
+configuration was either broken (pygod/clean, FDR 0.787) or found nothing. This
+is the existence proof that keeps the paper from being purely cautionary.
+
+### 2A.5 The uncomfortable result -- NOW PARTLY RESOLVED, see 2A.4b
+
+> This section was written before the gae run. Its conclusion holds for
+> dominant_pygod but NOT in general: gae under valid calibration achieves 101
+> discoveries at FDR 0.059 on amazon. Read 2A.4b. What survives is that a
+> degree-proxy detector has no real power once its validity failure is removed.
+
+Under a VALID calibration rule, dominant_pygod finds almost nothing:
 
   - amazon, `random_full` at n_calib=4000 (bh_min_rank ~7, so only 7 test
     points need to beat the whole calibration set): **0 discoveries**
@@ -256,21 +312,32 @@ these fixes.
 
 ### 2A.8 What to run next, in priority order
 
-    1. degree_baseline_check.py --n_seeds 3 --device cuda        (~15 min)
-       Decides whether the Tier-1 framing exists.
+    DONE  degree_baseline_check.py           -> 16/20 cells lose to degree (2A.4)
+    DONE  strategy comparison, amazon + gae  -> mechanism is conditional (2A.4b)
 
-    2. calibration_strategy_comparison.py --dataset reddit --detector ocgnn
-       and --dataset weibo --detector ocgnn
-       ocgnn is the only detector that discovers AND controls FDR on two
-       datasets (weibo 15.6 disc at FDR 0.041; reddit 2.6 at 0.108). If random
-       calibration improves on clean for it, that is the demonstrated remedy.
+    1. Replicate the conditionality on a second graph. This is the ONLY
+       outstanding experiment that changes the paper's strength:
 
-    3. calibration_strategy_comparison.py on tolokers, and with anomalydae/gae,
-       to widen the score-gap law beyond 17 cells.
+         python scripts/calibration_strategy_comparison.py              --dataset tolokers --detector gae --n_seeds 5 --device cuda
 
-    4. Replace the argsort AUROC in the two scripts named in 2A.7 item 5.
+       Then the same on weibo. The claim in 2A.4b currently rests on one
+       dataset. If clean-vs-random behaves the same way for a low-sdeg detector
+       on tolokers and weibo, the conditional mechanism is solid.
 
-    5. Write. The draft is the bottleneck, not the experiments.
+    2. Widen the score-gap law past 17 cells -- anomalydae and ocgnn on the
+       datasets already run. It is the paper's central quantitative claim.
+
+    3. Fix the argsort AUROC in synthetic_difficulty_sweep.py and
+       severity_sweep_pygod_instrumented.py (2A.7 item 5). Ties are mishandled.
+
+    4. Copy every CSV into results/published/ with an index row.
+
+    5. WRITE. The draft is the bottleneck. Section 7's rewrite plan predates
+       2A entirely and needs redoing.
+
+**Do not** add more detectors or datasets hoping for a better headline. The
+empirical breadth already exceeds most GAD papers. What is missing is writing,
+and a faculty collaborator (section 8.8).
 
 ---
 
@@ -821,50 +888,49 @@ Graphs? A Joint Condition on Base Rate, Calibration Size, and Detector Quality*
 then said TAI, then TNSE. Those were all written before section 2A. The honest
 current read is below, and it is CONDITIONAL on one experiment.**
 
-### 8.1 The decision hinges on `degree_baseline_check.py`
+### 8.1 The degree check ran; the venue picture is now settled enough to act
 
-| outcome of 2A.4 | target | estimate |
-|---|---|---|
-| **Detectors tie or lose to a degree lookup on most real cells** | **NeurIPS Datasets & Benchmarks** | ~25-30% |
-| Mixed across datasets | TNSE | ~50% |
-| Detectors clearly beat degree everywhere | TNSE | ~45-55% |
+Both gating experiments are done (2A.4, 2A.4b). Current honest read:
 
-That single run is worth more to the venue decision than any further
-experiment, and it takes about fifteen minutes.
+| venue | deadline | fit | estimate |
+|---|---|---|---|
+| **AISTATS** | ~Oct, for May conf | Best. Statistics-first, values a rigorous exchangeability argument and a clean conditional result | **~20%** |
+| **IEEE TNSE** | rolling | Very good. Graph/network science, and 2A.4b gives it the "here is when it works" section it was missing | **~55-65%** |
+| TMLR | rolling | Good. Reviews correctness over novelty; would likely take this with revisions | ~60% |
+| KDD | ~Feb | Good scope, but wants the remedy to be strong | ~10-15% |
+| UAI | ~Feb | Similar to AISTATS, slightly lower prestige. Pick one, not both | ~15-20% |
+| COPA 2027 | ~May 2027 | Best topical fit, lowest name recognition | ~40% |
+| NeurIPS D&B | **~May 2027** | Would fit 2A.4 well, but the timing is dead for this cycle | n/a |
 
-### 8.2 Why NeurIPS D&B if the degree result lands
+**NeurIPS D&B is off the table on timing, not merit.** The degree-baseline
+result (2A.4) would have suited it, but the next deadline is roughly nine
+months out and that conflicts with everything else on the timeline.
 
-The claim would be: **benchmark AUROC in graph anomaly detection substantially
-measures node degree.** D&B exists for exactly this genre -- "the evaluation is
-measuring the wrong thing" -- and `tang2023gadbench`, already in our
-bibliography, was published there.
+**Recommended: submit to AISTATS in October as the real attempt, with TNSE as
+the fallback.** An AISTATS rejection still returns reviews that improve the
+TNSE version, so the sequence costs little. TMLR is the no-deadline safety net
+if timing pressure returns.
 
-The conformal work then becomes the mechanism section rather than the headline:
-not only does AUROC measure degree, but that degree-dominance is precisely what
-breaks the FDR guarantee when calibration is filtered. The two findings
-reinforce each other, and the second explains why the first matters
-operationally.
+### 8.2 What changed the estimate upward
 
-**It is a separate track from the NeurIPS main track**, with its own call and
-reviewer pool. Same conference, same proceedings, "NeurIPS" on the CV. The main
-track wants a novel method or a theorem and we have neither -- under 5% there.
-Do not confuse the two; earlier discussions in this project did.
+Before 2A.4b the paper was a cautionary null: "this fails, and fixing it
+reveals the method never worked." That is publishable but weak.
 
-### 8.3 If the degree result does not land: TNSE
+After 2A.4b it is a conditional result with an existence proof: the mechanism
+is real, the condition is measurable without labels, and there is a
+configuration that is both valid and useful (gae + unfiltered calibration,
+FDR 0.059 at power 0.116). "Here is when it breaks, here is how to check, here
+is a setting that works" is a substantially stronger paper than "here is when
+it breaks."
 
-**IEEE TNSE, not TAI and not TETCI.** Reasons, in order:
+### 8.3 What would move it further, in order of value
 
-  - **Impact factor 7.3-7.9**, versus TAI ~6.0 and TETCI ~6.0-8.5.
-  - **Scope fit is much better.** This is graph and network science. TETCI's
-    scope is evolutionary computation, fuzzy logic, and nature-inspired
-    methods -- genuinely not what we built. TAI wants mainstream AI
-    architectures.
-  - **For an ML-for-Science MS specifically**, network science is a recognised
-    pillar (molecules, connectomes, epidemiology), so TNSE reads as coherent
-    on the CV rather than as a detour.
-
-Estimate ~45-55% after revisions, which clears the "no lotteries" bar set
-earlier in this project.
+  1. **A faculty co-author.** Fixes the arXiv endorsement, improves the paper,
+     and changes how referees read a submission from unaffiliated students.
+     Worth more than any remaining experiment.
+  2. **Replication of 2A.4b on tolokers and weibo.** One run each. The
+     conditional claim rests on one dataset today.
+  3. **Writing.** The bottleneck, and it has been for weeks.
 
 ### 8.4 What is off the table, and why
 
