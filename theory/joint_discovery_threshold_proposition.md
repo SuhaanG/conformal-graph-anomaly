@@ -695,3 +695,161 @@ violation from FDR alone.
    within-detector analyses.
 3. Investigate weibo on its own terms.
 4. Only then decide what, if anything, becomes a theorem.
+
+
+---
+
+## Part 6: The project has never studied calibration contamination
+
+**This section supersedes Part 4 as the theoretical core, and it reframes the
+paper's premise. Read it before writing anything.**
+
+### The misnomer
+
+Every condition in `real_data_experiment.py` draws calibration from
+`eligible_normal_idx`, which is a subset of `normal_idx = np.where(labels == 0)`:
+
+    clean         calib_idx = clean_pool                       (labels == 0)
+    contaminated  calib_idx = rng.choice(eligible_normal_idx)  (labels == 0)
+    adversarial   calib_idx = top_exposed[:n_calib]            (labels == 0)
+
+**No condition places a single anomaly in the calibration set.** In the
+conformal outlier-detection literature -- Bates et al. 2023, AdaDetect --
+"contaminated calibration" means the reference sample CONTAINS OUTLIERS. That
+experiment has never been run in this project.
+
+What the three conditions actually vary is which NORMAL nodes are selected, as
+a function of their exposure (fraction of anomalous neighbours):
+
+    clean         exposure == 0
+    contaminated  exposure ~ population
+    adversarial   exposure maximal
+
+This is a **covariate selection** experiment wearing a contamination label. It
+explains, cleanly and in retrospect, why the contamination story never worked
+(handoff section 4): there was no contamination to detect. The exposure ->
+score channel we spent so long measuring (|r| < 0.03 on four datasets, 0.111 on
+weibo) is a second-order effect of message passing, not the first-order effect
+the framing implied.
+
+### The general statement
+
+Let normals carry a covariate W (degree, exposure, clustering, anything). Let a
+selection rule R produce calibration C, and let test-normals T be drawn from
+the normal population. Conformal validity requires S|C ==d S|T.
+
+**Theorem (selection-induced non-exchangeability).** If R shifts the
+distribution of W -- that is, P_C^W != P^W -- and the conditional score
+distribution S | W is stochastically monotone in W, then S|C and S|T differ in
+the usual stochastic order. The conformal p-values of normal test points are
+then stochastically dominated by (or dominate) Uniform, and BH's FDR guarantee
+fails in the corresponding direction.
+
+The proof is Part 4 steps 2-4 verbatim, with W in place of degree. Part 4 is
+therefore not wrong -- it is the special case W = degree, and its error was
+treating a corollary as the theorem.
+
+**Corollary 1 (exposure channel).** The clean rule sets W = exposure and makes
+P_C^W a point mass at 0 while P^W has mass above 0 -- the maximal possible
+shift. Validity fails whenever S depends on exposure at all.
+
+Contrapositive, and this is the point worth quoting: clean calibration is valid
+only when the score is insensitive to exposure, which is exactly the regime
+where contamination was never a threat. **The strategy is valid when it is
+unnecessary and invalid when it is needed.**
+
+**Corollary 2 (degree channel).** P(exposure == 0 | degree) is non-increasing
+(measured: Kendall tau = -0.92 on amazon, reddit, tolokers), so the clean rule
+shifts degree as a side effect. Validity fails whenever S depends on degree,
+EVEN IF S is independent of exposure. This is the channel that dominates where
+the filter is harsh -- amazon retains 2% of normals, tolokers 9%.
+
+Weibo is the case that separates the two: the filter retains 70%, degree is not
+shifted at all (tau = -0.02, 0/25 seeds monotone), yet gamma ~ 7. Corollary 2
+predicts nothing there; Corollary 1 does, and weibo is the one dataset with a
+measurable exposure -> score signal (Spearman 0.111, p = 1.4e-23, surviving
+control for degree).
+
+**Corollary 3 (the safe rule).** If R is a uniform random draw from the normal
+population, then P_C^W = P^W for EVERY covariate W simultaneously. No shift
+exists, so no channel can open. Random calibration is valid regardless of how
+many calibration nodes happen to neighbour anomalies.
+
+Corollary 3 is the practical payload and it is counterintuitive: **accepting
+"contamination" into calibration is safer than filtering it out**, because the
+filtering is what breaks the guarantee. `scripts/calibration_strategy_comparison.py`
+tests exactly this at matched n_calib and a shared test set.
+
+### The experiment that is still missing
+
+True contamination -- calibration containing actual anomalies at rate epsilon
+-- has never been run here, and it is cheap. The expected contrast completes
+the story:
+
+  - **True contamination** puts high-scoring anomalies into calibration. Test
+    anomalies then face stiffer competition, p-values rise, power falls, and
+    FDR stays controlled or becomes conservative. Safe but weak.
+  - **Selection filtering** (our "clean") removes normals correlated with the
+    anomalies, shifts the covariate distribution, and makes p-values
+    anti-conservative. Dangerous.
+
+If that holds, the paper's finding is sharp: the failure mode everyone guards
+against is benign, and the standard guard is what actually breaks FDR control.
+Add an `--epsilon` condition to the frame builder that injects anomalies into
+calibration at a controlled rate.
+
+### What this does to the paper
+
+The title and premise change from contamination to selection. Concretely:
+
+  - Sections built on "clustered, propagating calibration contamination"
+    describe a mechanism that is real but second-order, and that no condition
+    in the codebase actually isolates.
+  - The empirical result stands unchanged and gets a correct explanation:
+    median realized FDR 0.613 against nominal 0.10 across 13 discovering cells.
+  - Proposition 1 is not contradicted. Its exchangeability precondition is
+    simply violated by the selection rule, and the paper should say which rules
+    satisfy it (random) and which do not (any covariate filter).
+  - Part 4's degree machinery survives as Corollary 2 rather than as the
+    headline.
+
+### Status
+
+The theorem is a restatement of Part 4 at the right level of generality and
+inherits its proof, which rests on standard stochastic-order results. What is
+NOT yet established is Corollary 3 on real data at matched n -- that is what is
+running now. If random calibration is also broken, the account is wrong and
+this section must be rewritten, not defended.
+
+### Addendum: true contamination is safe because Part 1 blocks it
+
+The true-contamination condition was built and smoke-tested (synthetic, frozen
+detector, one seed -- wiring only, not a result). Injecting anomalies into
+calibration at 5% produced ZERO discoveries, and the reason is Part 1's
+discovery-threshold proposition, which closes the loop between the two halves
+of this document.
+
+With eps*n_calib anomalies in calibration occupying the top scores, no test
+point can achieve a p-value below (eps*n + 1)/(n + 1). At n_calib=707, eps=0.05
+that floor is 0.0508. BH rejects at sorted rank k only if p <= alpha*k/m, so
+k >= 0.0508 * 723 / 0.10 = 368 simultaneous discoveries would be required to
+justify even one. The procedure cannot reject anything.
+
+So the two failure modes are opposite and have separate explanations:
+
+    TRUE contamination   raises the resolution floor  -> no discoveries
+                         -> FDR trivially 0.  SAFE BUT POWERLESS.  (Part 1)
+
+    SELECTION filtering  shifts the null distribution -> anti-conservative
+                         -> FDR up to 0.91.  DANGEROUS.             (Part 6)
+
+That is the paper's spine. Part 1 and Part 6 are not two separate results
+about calibration -- they are the two ways a calibration set can be wrong, and
+the literature's stated worry is the benign one.
+
+CAVEAT on the smoke test: it ran dominant_ours (dead final ReLU, sdeg ~ 0) on a
+2500-node synthetic graph for a single seed, and its `random` arm looked WORSE
+than `clean` (gamma 2.01 vs 0.59) on that seed while reversing on the next.
+That is noise from a detector with no covariate sensitivity, on a graph too
+small to resolve anything. It neither supports nor undermines Corollary 3. The
+real-data runs decide.

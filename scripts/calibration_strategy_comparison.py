@@ -55,6 +55,11 @@ PREDICTIONS, stated before running:
      exposure and degree.
   4. exposed_only is ALSO broken (in the opposite direction, conservative),
      because it is equally a filter.
+  5. TRUE contamination (actual anomalies in calibration) is SAFE: high-scoring
+     anomalies in calibration make test anomalies face stiffer competition, so
+     p-values rise, power falls, and FDR stays at or below nominal. If 5 holds
+     alongside 2, the paper's finding is sharp -- the failure mode everyone
+     guards against is benign, and the standard guard is what breaks FDR.
 
 If (1) fails -- if random calibration is also broken -- then the problem is
 not the selection rule and this whole line is wrong.
@@ -105,7 +110,14 @@ from selection_bias import (
 )
 from real_data_experiment import load_any_dataset, SUPPORTED_DATASETS
 
-STRATEGIES = ["clean", "random", "exposed_only"]
+# "true_contam_XX" injects ACTUAL ANOMALIES into calibration at rate XX%.
+# This is what "contaminated calibration" means in Bates et al. 2023 and
+# AdaDetect, and it is the experiment this project has never run: every
+# condition in real_data_experiment.py draws calibration from labels == 0, so
+# no anomaly has ever entered a calibration set here. See theory doc Part 6.
+STRATEGIES = ["clean", "random", "exposed_only", "true_contam_05", "true_contam_10"]
+
+TRUE_CONTAM_RATES = {"true_contam_05": 0.05, "true_contam_10": 0.10}
 
 
 def compute_exposure(graph, labels, normal_idx):
@@ -181,11 +193,28 @@ def run_seed(graph, features, labels, seed, args):
     r_exp, p_exp = (stats.spearmanr(scores[normal_idx][ok], exposure[ok])
                     if ok.sum() > 3 else (np.nan, np.nan))
 
+    # Anomalies not already spent on the test set are the injection source.
+    # The test set keeps every anomaly (that is the frozen pipeline's design),
+    # so injection draws WITH the test anomalies excluded would leave nothing.
+    # Instead inject copies-by-index from the anomaly pool: calibration and test
+    # then share some anomalies, which is exactly the transductive setting the
+    # rest of the pipeline already assumes.
+    anom_pool = anomaly_idx
+
     t_grid = adaptive_t_grid(n_calib)
     out = []
     for strat in STRATEGIES:
-        pool = pools[strat]
-        calib_idx = rng.choice(pool, size=n_calib, replace=False)
+        if strat in TRUE_CONTAM_RATES:
+            eps = TRUE_CONTAM_RATES[strat]
+            n_anom = int(round(eps * n_calib))
+            n_norm = n_calib - n_anom
+            if n_anom < 1 or n_anom > len(anom_pool):
+                continue
+            calib_idx = np.concatenate([
+                rng.choice(pools["random"], size=n_norm, replace=False),
+                rng.choice(anom_pool, size=n_anom, replace=False)])
+        else:
+            calib_idx = rng.choice(pools[strat], size=n_calib, replace=False)
 
         p = conformal_p_values(scores[calib_idx], scores[test_idx])
         rej = benjamini_hochberg(p, args.alpha)
@@ -206,7 +235,10 @@ def run_seed(graph, features, labels, seed, args):
             "dataset": args.dataset, "detector": args.detector, "seed": seed,
             "strategy": strat, "alpha": args.alpha,
             "n_calib": n_calib, "m_test": len(test_idx), "n_null": len(null_p),
-            "calib_mean_exposure": float(exposure[np.isin(normal_idx, calib_idx)].mean()),
+            "calib_frac_anomalous": float(np.mean(labels[calib_idx] == 1)),
+            "calib_mean_exposure": float(
+                exposure[np.isin(normal_idx, calib_idx)].mean())
+                if np.any(np.isin(normal_idx, calib_idx)) else float("nan"),
             "calib_mean_degree": float(degrees[calib_idx].mean()),
             "test_mean_degree": float(degrees[test_normal].mean()),
             "score_gap_cohens_d": standardized_gap(scores[calib_idx], scores[test_normal]),
