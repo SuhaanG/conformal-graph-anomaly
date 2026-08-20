@@ -1135,3 +1135,32 @@ calibration set.
   CONFIRMED  A working configuration exists (gae + unfiltered calibration).
   OPEN       Whether this replicates on tolokers and weibo with gae/anomalydae.
              That is now the highest-value remaining run.
+
+### Part 8 replication: tolokers confirms the conditionality
+
+                              amazon    tolokers
+    calib_deg (clean)          106.3         5.7
+    test_deg                   771.3        73.8
+    degree gap                  7.3x       12.9x
+    sdeg (gae)                -0.026      -0.172
+    gap_d (score)             -0.038      +0.052
+    gamma, clean                0.76        0.28
+    gamma, random               0.81        0.99
+
+tolokers' clean filter is HARSHER than amazon's (13x degree gap vs 7x), and
+still produces no validity failure under a low-sdeg detector. On the same graph
+dominant_pygod (sdeg +0.909) gives gamma@BH 9.61 and realized FDR 0.635.
+
+Two graphs, same pattern, opposite detectors: **the covariate gap is a property
+of the filter and the graph; the validity failure is a property of the
+detector.** The sign prediction also holds again -- sdeg negative with
+low-degree calibration puts calibration scores slightly higher, predicting
+conservative, and gamma is 0.28.
+
+**Honest limit.** gae on tolokers produces zero discoveries even unhandicapped
+at n_calib=4000. The VALIDITY claim replicates across both graphs; the
+USABILITY claim does not. amazon is so far the only graph where a configuration
+is both valid and useful (gae + unfiltered, FDR 0.059 at power 0.116). The
+paper should state this plainly: the diagnostic generalises, a working
+configuration has been demonstrated once, and whether useful power is
+achievable in general is open.

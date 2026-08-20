@@ -315,14 +315,26 @@ these fixes.
     DONE  degree_baseline_check.py           -> 16/20 cells lose to degree (2A.4)
     DONE  strategy comparison, amazon + gae  -> mechanism is conditional (2A.4b)
 
-    1. Replicate the conditionality on a second graph. This is the ONLY
-       outstanding experiment that changes the paper's strength:
+    DONE  strategy comparison, tolokers + gae -> conditionality REPLICATES
 
-         python scripts/calibration_strategy_comparison.py              --dataset tolokers --detector gae --n_seeds 5 --device cuda
+          tolokers' clean filter is even harsher than amazon's -- a 13x degree
+          gap (calib 5.7 vs test 73.8) against amazon's 7x -- yet with gae
+          (sdeg -0.172) the score gap stays at +0.052 and gamma stays valid at
+          0.28, with random at 0.99. On the SAME graph dominant_pygod
+          (sdeg +0.909) gives gamma@BH 9.61 and FDR 0.635. Two graphs, same
+          pattern: the covariate gap is a property of the filter, the validity
+          failure is a property of the detector.
 
-       Then the same on weibo. The claim in 2A.4b currently rests on one
-       dataset. If clean-vs-random behaves the same way for a low-sdeg detector
-       on tolokers and weibo, the conditional mechanism is solid.
+          Sign check passes again: sdeg NEGATIVE with low-degree calibration
+          means calibration scores slightly HIGHER, predicting conservative --
+          and gamma is 0.28.
+
+          HONEST LIMIT: gae on tolokers finds NOTHING even at n_calib=4000. The
+          validity result replicates; the usability result does not. amazon
+          remains the only graph with a configuration that is both valid and
+          useful.
+
+    1. Same run on weibo (--dataset weibo --detector gae). Third graph.
 
     2. Widen the score-gap law past 17 cells -- anomalydae and ocgnn on the
        datasets already run. It is the paper's central quantitative claim.
