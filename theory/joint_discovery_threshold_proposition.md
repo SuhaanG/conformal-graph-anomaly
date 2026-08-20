@@ -536,3 +536,123 @@ as stated is wrong and this section must be revised, not defended.
 
 None of Part 4 has been numerically checked yet. Do not present it as
 established until at least prediction 2 has been run.
+
+
+---
+
+## Part 5: The falsification test ran. Part 4 did NOT survive it.
+
+**Status: Part 4's degree mechanism is NOT confirmed. Do not write it up as
+Theorem 2. The selection effect is real and much larger than we thought, but
+degree does not explain it.**
+
+Run: `selection_bias_matrix.py`, 5 detectors x 4 real graphs x 5 seeds, clean
+condition, commit b320128.
+
+### What the script printed, and why it was wrong
+
+The script reported `VERDICT: consistent with Part 4`, with all three
+statistics agreeing (mean_p rho=-0.729, ks rho=+0.877, gamma_hat rho=+0.903,
+all p<0.001). That verdict does not hold up, for a reason that is our error,
+not the data's.
+
+**gamma_hat was measuring the wrong part of the distribution.** It takes a sup
+over calibration ranks r >= min_rank, with min_rank = n_calib//4. But BH does
+not cut there. On weibo, n_calib ~ 5659 so min_rank ~ 1250, while BH's realized
+threshold t = alpha*k/m = 0.0022 corresponds to rank **11**. The statistic was
+looking 112x further into the bulk than the procedure it is supposed to
+describe. On amazon the mismatch is 4x rather than 112x, which is why the
+effect still showed there.
+
+Recomputing gamma at the threshold where BH actually cut, from the realized
+FDR (gamma = V / (t * m_0), all quantities observed):
+
+| dataset | detector | sdeg | gamma_hat | gamma@BH | FDR |
+|---|---|---|---|---|---|
+| amazon | dominant_pygod | +0.918 | 3.29 | 10.49 | 0.901 |
+| amazon | ocgnn | +0.439 | 1.24 | 2.09 | 0.179 |
+| reddit | dominant_pygod | +0.606 | 3.62 | 9.80 | 0.913 |
+| reddit | gae | +0.401 | 1.67 | 0.97 | 0.090 |
+| tolokers | dominant_pygod | +0.899 | 2.90 | 9.61 | 0.635 |
+| weibo | anomalydae | **-0.126** | 1.12 | **7.41** | 0.648 |
+| weibo | dominant_ours | **-0.125** | 1.07 | **7.43** | 0.649 |
+| weibo | gae | **-0.093** | 1.02 | **7.02** | 0.613 |
+| weibo | dominant_pygod | +0.447 | 1.29 | 7.15 | 0.625 |
+
+    Spearman(sdeg, gamma_hat) over discovering cells: rho=+0.813, p=0.0007
+    Spearman(sdeg, gamma@BH)  over discovering cells: rho=+0.462, p=0.1309
+
+Measured where BH operates, the degree correlation is not significant.
+
+### The assumption-free version of the refutation
+
+Within weibo alone, the graph, the selection filter, m_0 and m_1 are all
+identical and only the detector changes. FDR is a ratio on the same test set,
+so no estimate of n_calib or m_0 enters:
+
+    anomalydae      sdeg=-0.126   FDR=0.648
+    dominant_ours   sdeg=-0.125   FDR=0.649
+    gae             sdeg=-0.093   FDR=0.613
+    dominant_pygod  sdeg=+0.447   FDR=0.625
+    ocgnn           sdeg=-0.120   FDR=0.041
+
+    Spearman(sdeg, FDR) within weibo: rho=-0.500, p=0.3910
+
+Part 4 predicts detectors with NEGATIVE score-degree correlation are
+conservative and should show no violation. Three of them sit at FDR 0.61-0.65
+against a nominal 0.10. The mechanism as stated does not survive this.
+
+### What IS true, and is a bigger finding than the one we were chasing
+
+The clean condition fails catastrophically on real graphs, far beyond the
+0.132 seen on synthetic. Across the 13 cells that produced any discoveries:
+
+    median realized FDR = 0.613   against nominal alpha = 0.10
+    7 of 13 cells exceed FDR 0.50
+
+This is not a subtle inflation. It is the guarantee failing by 6-9x, on the
+one condition Proposition 1 proves is exchangeable, on every real dataset
+tested, under detectors spanning three architectural families.
+
+Degree modulates the severity -- amazon and tolokers do order roughly by
+score-degree dependence, and dominant_pygod is worst everywhere -- but it does
+not cause it, because weibo breaks identically for detectors that are
+negatively degree-correlated.
+
+### Why the two ideas got conflated
+
+FDR = V/(V+S). Anti-conservativeness raises V; weak detector signal lowers S.
+Both inflate FDR, and the matrix confounded them. Synthetic runs at AUROC 1.0,
+where S is maximal, so even a real violation only showed as 0.132. On weibo,
+where power is ~0.12, a modest left-tail excess produces FDR 0.65. The severity
+of the FDR damage is therefore NOT a clean readout of the exchangeability
+violation, and gamma must be measured directly on the null p-values at the BH
+operating point rather than inferred from FDR.
+
+### What to do next, in order
+
+1. **Fix the estimator to measure where BH cuts.** min_rank = n_calib//4 was
+   introduced to control noise (an exchangeable null at min_rank=10 has p95
+   1.57) and it does that, but it made the statistic irrelevant. The fix is to
+   evaluate the left tail at small fixed t and control variance by POOLING null
+   p-values across seeds within a cell, not by moving t.
+2. **Re-run the matrix** and re-test prediction 2 at the corrected operating
+   point, with the block permutation and within-detector analyses.
+3. **Find what actually breaks weibo.** Same filter, same graph, five
+   detectors, four of them at FDR ~0.63 regardless of degree behaviour. That is
+   a dataset-level property. Candidates: the clean pool is 5659 of 8058 normals
+   (~70%), so "clean" is barely a filter there and the calibration set is
+   nearly the whole normal population -- yet exchangeability still fails, which
+   points at something other than selection.
+4. Only after 1-3: decide whether any theorem survives, and about what.
+
+### Honest framing for the paper as it stands
+
+The defensible claim today is empirical and strong: *constructing a calibration
+set by topological filtering breaks conformal FDR control on real graphs,
+severely and reproducibly, across detectors and datasets.* The degree-tilt
+explanation in Part 4 is a hypothesis that the data does not support, and
+should be presented as a mechanism we tested and rejected, not as a theorem.
+That is still a real contribution -- a documented, reproducible failure of a
+guarantee people rely on -- but it is a different paper from the one Part 4
+described.

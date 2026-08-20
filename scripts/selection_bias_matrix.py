@@ -69,6 +69,7 @@ from selection_bias import (
     score_degree_dependence,
     empirical_clean_probability,
     default_min_rank,
+    left_tail_gamma,
 )
 from real_data_experiment import (
     load_any_dataset,
@@ -85,7 +86,12 @@ DEFAULT_DATASETS = ["amazon", "reddit", "tolokers", "weibo"]
 # the actual test. gamma_at_bh is carried for interpretation but excluded from
 # the headline: its exchangeable-null spread is [0.647, 1.440] against an
 # effect near 1.32, so it cannot separate (measured; see selection_bias.py).
-HEADLINE_STATS = ["mean_p", "ks_uniform", "gamma_hat"]
+# gamma_t0.01 FIRST: it is the only one of these measured where BH actually
+# cuts. gamma_hat and ks_uniform are sup statistics over ranks >= n_calib//4,
+# which on weibo was 112x further into the bulk than BH's realized threshold --
+# the mismatch that produced a false confirmation on the first run. They are
+# kept as supporting evidence about the bulk, not as the test.
+HEADLINE_STATS = ["gamma_t0.01", "mean_p", "ks_uniform", "gamma_hat"]
 
 
 def run_cell(dataset, detector, seed, args, cached_graph):
@@ -125,6 +131,11 @@ def run_cell(dataset, detector, seed, args, cached_graph):
         diag["n_discoveries"], m_test=len(diag["test_idx"]), alpha=args.alpha)
 
     obs = anticonservativeness(null_p, n_calib, bh_threshold=bh_t)
+    # Measured at the BH operating point, NOT at gamma_hat's ranks. See
+    # left_tail_gamma's docstring: on the first run gamma_hat sat 112x further
+    # into the bulk than BH's realized threshold on weibo, which is what
+    # produced a false 'consistent with Part 4' verdict.
+    tail = left_tail_gamma(null_p)
     null = exchangeable_null_pvalues(
         obs, n_calib, n_null, bh_threshold=bh_t,
         min_rank=obs["min_rank_used"], n_sim=args.n_sim, seed=10_000 + seed)
@@ -169,6 +180,7 @@ def run_cell(dataset, detector, seed, args, cached_graph):
     for k in ("gamma_hat", "gamma_at_bh", "mean_p", "ks_uniform"):
         row[f"{k}_null_mean"] = null[f"{k}_null_mean"]
         row[f"{k}_null_p"] = null[f"{k}_null_p"]
+    row.update(tail)
     return row
 
 

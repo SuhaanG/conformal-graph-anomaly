@@ -289,6 +289,45 @@ def exchangeable_null_pvalues(observed: dict,
     return out
 
 
+def left_tail_gamma(null_p_values: np.ndarray, t_grid=(0.001, 0.002, 0.005,
+                                                          0.01, 0.02, 0.05)) -> dict:
+    """gamma = Fhat(t)/t evaluated in the LEFT TAIL, where BH actually cuts.
+
+    WHY THIS EXISTS, and why gamma_hat is not enough. gamma_hat takes a sup over
+    ranks r >= min_rank = n_calib//4. That controls variance, but it measures a
+    region BH never visits. Measured on the first 20-cell run: on weibo,
+    n_calib ~ 5659 so min_rank ~ 1250, while BH's realized threshold was
+    t = 0.0022, i.e. calibration rank 11. gamma_hat looked 112x further into the
+    bulk than the procedure it describes, reported 1.07 ("no violation"), while
+    the true anti-conservativeness at BH's cut point was 6.94.
+
+    That single mismatch is what produced a false "consistent with Part 4"
+    verdict: the degree correlation is rho=+0.81 (p=0.0007) measured at
+    gamma_hat's ranks and rho=+0.46 (p=0.13) measured where BH cuts.
+
+    Variance is controlled the right way here -- by POOLING null p-values across
+    seeds before calling this, so the same small t has more data behind it --
+    rather than by moving t somewhere quieter and less relevant.
+
+    Returns gamma at each t plus the count behind it, since a gamma computed
+    from three points is not worth reading and the caller must be able to see
+    that.
+    """
+    p = np.asarray(null_p_values, dtype=float)
+    p = p[np.isfinite(p)]
+    out = {}
+    if len(p) == 0:
+        for t in t_grid:
+            out[f"gamma_t{t:g}"] = np.nan
+            out[f"n_below_t{t:g}"] = 0
+        return out
+    for t in t_grid:
+        n_below = int(np.sum(p <= t))
+        out[f"gamma_t{t:g}"] = float((n_below / len(p)) / t)
+        out[f"n_below_t{t:g}"] = n_below
+    return out
+
+
 def bh_threshold_from_rejections(n_rejections: int, m_test: int, alpha: float):
     """The p-value threshold BH effectively applied: alpha * k / m.
 
