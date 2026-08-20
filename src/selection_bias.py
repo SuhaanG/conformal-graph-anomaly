@@ -289,6 +289,26 @@ def exchangeable_null_pvalues(observed: dict,
     return out
 
 
+def adaptive_t_grid(n_calib: int, min_ranks: int = 10, n_points: int = 6,
+                    t_max: float = 0.20) -> tuple:
+    """t values that are actually MEASURABLE at this calibration size.
+
+    Conformal p-values live on {1/(n+1), ..., 1}, so a threshold t only
+    resolves floor(t*(n+1)) distinct ranks. A fixed grid ignores this and
+    silently degenerates on small calibration sets: on amazon n_calib=267, so
+    t=0.01 covers calibration ranks 1-2 ONLY. That is what produced
+    gamma_t0.01 values of exactly 0.00 in the first beta sweep -- not a valid
+    procedure, just a statistic with nothing to measure.
+
+    Requiring at least min_ranks achievable ranks fixes it: t >= min_ranks/(n+1).
+    """
+    t_lo = max(min_ranks / (n_calib + 1.0), 1e-4)
+    if t_lo >= t_max:
+        return (round(t_lo, 5),)
+    return tuple(round(float(t), 5)
+                 for t in np.geomspace(t_lo, t_max, n_points))
+
+
 def left_tail_gamma(null_p_values: np.ndarray, t_grid=(0.001, 0.002, 0.005,
                                                           0.01, 0.02, 0.05)) -> dict:
     """gamma = Fhat(t)/t evaluated in the LEFT TAIL, where BH actually cuts.

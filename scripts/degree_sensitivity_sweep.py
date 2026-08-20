@@ -73,12 +73,18 @@ from selection_bias import (
     exchangeable_null_pvalues,
     bh_threshold_from_rejections,
     left_tail_gamma,
+    adaptive_t_grid,
     score_degree_dependence,
     empirical_clean_probability,
 )
 from real_data_experiment import load_any_dataset, SUPPORTED_DATASETS
 
-DEFAULT_BETAS = [-0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
+# Extended past 1.5 deliberately. The first sweep stopped at 1.5 and reached
+# only sdeg=+0.48 on amazon, so it never crossed sdeg=0 -- which is precisely
+# where Part 4 makes its falsifiable point prediction (degree-neutral scores
+# should give a valid procedure, gamma ~ 1). A sweep that never reaches sdeg=0
+# cannot test the theory, only describe a monotone trend.
+DEFAULT_BETAS = [-0.5, 0.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0]
 
 
 def apply_beta(scores, degrees, beta):
@@ -177,9 +183,15 @@ def main():
         # (A1) is a property of the FRAME, not of beta -- report it once.
         q = empirical_clean_probability(deg_all[normal_idx],
                                         np.isin(normal_idx, calib_idx), n_bins=12)
+        # t must be measurable at THIS calibration size. On amazon
+        # (n_calib=267) a fixed t=0.01 resolves only ranks 1-2 and
+        # collapses to 0.00 -- an artifact, not a finding.
+        t_grid = adaptive_t_grid(n_calib)
 
         print(f"  seed {seed}: n_calib={n_calib} m={m} "
-              f"A1_monotone={q['is_monotone']} tau={q['kendall_tau']:+.3f}")
+              f"A1_monotone={q['is_monotone']} tau={q['kendall_tau']:+.3f} "
+              f"t_grid={t_grid[0]:.4f}..{t_grid[-1]:.2f}")
+        t_lo_key = f"gamma_t{t_grid[0]:g}"
 
         for beta in args.betas:
             s_b = apply_beta(scores_raw, deg_all, beta)
@@ -193,7 +205,7 @@ def main():
             null_p = p[test_labels == 0]
             bh_t = bh_threshold_from_rejections(k, m, args.alpha)
             obs = anticonservativeness(null_p, n_calib, bh_threshold=bh_t)
-            tail = left_tail_gamma(null_p)
+            tail = left_tail_gamma(null_p, t_grid=t_grid)
             null = exchangeable_null_pvalues(obs, n_calib, len(null_p),
                                              bh_threshold=bh_t,
                                              min_rank=obs["min_rank_used"],
@@ -212,9 +224,12 @@ def main():
             }
             row.update(tail)
             rows.append(row)
+            row["gamma_t_lo"] = tail[t_lo_key]
+            row["t_lo"] = t_grid[0]
             print(f"      beta={beta:>+5.2f}  sdeg={dep['spearman_r']:+.4f}  "
-                  f"g_t0.01={tail['gamma_t0.01']:>7.2f}  "
-                  f"mean_p={obs['mean_p']:.4f}  disc={k:<6d} fdr={fdr:.3f}")
+                  f"gamma@t_lo={tail[t_lo_key]:>7.2f}  "
+                  f"mean_p={obs['mean_p']:.4f}  disc={k:<6d} "
+                  f"fdr={fdr:.3f} power={power:.3f}")
 
     if not rows:
         print("\nNo trials completed.")
@@ -231,44 +246,88 @@ def main():
     print(f"\nSaved {len(rows)} rows to {out}")
 
     # ---- the dose-response curve ----
-    print("\n" + "=" * 78)
-    print("DOSE-RESPONSE: does gamma track degree sensitivity within one detector?")
+    #
+    # NOT reported as Spearman(sdeg, gamma) along the beta curve. That statistic
+    # is close to VACUOUS here: Spearman(beta, sdeg) = -1.0000 by construction,
+    # so ANY quantity monotone in beta correlates with sdeg whether or not it is
+    # caused by it. The first sweep reported rho=+0.929, p=0.0003 on exactly
+    # that basis and it meant nothing.
+    #
+    # The falsifiable content of Part 4 is a POINT PREDICTION: when the score is
+    # made degree-neutral (sdeg -> 0), the selection tilt has nothing to act
+    # through, so the procedure should become valid (gamma -> 1). Report where
+    # gamma actually crosses 1 and what sdeg is there.
+    print()
     print("=" * 78)
-    print(f"{'beta':>7} {'sdeg':>9} {'g_t0.01':>9} {'g_t0.05':>9} {'mean_p':>8} "
-          f"{'disc':>7} {'fdr':>7}")
-    xs, ys = [], []
+    print("DOSE-RESPONSE: where does gamma cross 1, and what is sdeg there?")
+    print("=" * 78)
+    print(f"{'beta':>7} {'sdeg':>9} {'gamma@t_lo':>11} {'mean_p':>8} "
+          f"{'disc':>7} {'fdr':>7} {'power':>7}")
+    curve = []
     for beta in args.betas:
         sub = [r for r in rows if r["beta"] == beta]
         if not sub:
             continue
         f_ = lambda k: float(np.nanmean([r[k] for r in sub]))
-        sd, g1 = f_("spearman_score_degree"), f_("gamma_t0.01")
-        print(f"{beta:>+7.2f} {sd:>+9.4f} {g1:>9.2f} {f_('gamma_t0.05'):>9.2f} "
-              f"{f_('mean_p'):>8.4f} {f_('n_discoveries'):>7.0f} "
-              f"{f_('realized_fdr'):>7.3f}")
-        if np.isfinite(sd) and np.isfinite(g1):
-            xs.append(sd); ys.append(g1)
+        sd, g = f_("spearman_score_degree"), f_("gamma_t_lo")
+        disc, fdr, pw = f_("n_discoveries"), f_("realized_fdr"), f_("power")
+        note = "  <- no discoveries; FDR=0 is vacuous" if disc < 1 else ""
+        print(f"{beta:>+7.2f} {sd:>+9.4f} {g:>11.2f} {f_('mean_p'):>8.4f} "
+              f"{disc:>7.0f} {fdr:>7.3f} {pw:>7.3f}{note}")
+        if np.isfinite(sd) and np.isfinite(g):
+            curve.append((sd, g, beta, pw))
 
-    if len(xs) >= 5:
-        rho, p = stats.spearmanr(xs, ys)
-        print(f"\nSpearman(sdeg, gamma_t0.01) along the beta curve: "
-              f"rho={rho:+.4f} p={p:.4f}  (n={len(xs)} beta levels)")
-        print()
-        if rho > 0 and p < 0.05:
-            print("  SUPPORTS Part 4. Degree sensitivity was manipulated directly,")
-            print("  with architecture, weights, graph and calibration frame held")
-            print("  fixed, and the violation tracked it. This is a causal design,")
-            print("  not the observational cross-detector one.")
-        elif p >= 0.05:
-            print("  NOT SUPPORTED. gamma does not track degree sensitivity even")
-            print("  when it is manipulated directly on a fixed frame. That is the")
-            print("  cleanest evidence available against Part 4's mechanism --")
-            print("  revise the theory, do not defend it.")
-        else:
-            print("  WRONG SIGN. gamma moves OPPOSITE to the prediction. Part 4 as")
-            print("  stated is wrong.")
+    print()
+    if len(curve) < 4:
+        print("  Too few usable beta levels to locate a crossing.")
+        return
+
+    sd_min = min(c[0] for c in curve)
+    if sd_min > 0.05:
+        print(f"  INCONCLUSIVE. sdeg never reached 0 (minimum {sd_min:+.3f}).")
+        print(f"  Part 4's point prediction is about the sdeg~0 regime, so this")
+        print(f"  sweep cannot test it. Extend --betas upward and re-run.")
+        return
+
+    # Linear interpolation of gamma against sdeg, to find sdeg where gamma = 1.
+    c = sorted(curve, key=lambda z: z[0])
+    sds = np.array([z[0] for z in c]); gs = np.array([z[1] for z in c])
+    cross = None
+    for a, b in zip(range(len(c) - 1), range(1, len(c))):
+        if (gs[a] - 1.0) * (gs[b] - 1.0) <= 0 and gs[a] != gs[b]:
+            w = (1.0 - gs[a]) / (gs[b] - gs[a])
+            cross = sds[a] + w * (sds[b] - sds[a])
+            break
+
+    g_at_zero = float(np.interp(0.0, sds, gs))
+    print(f"  gamma at sdeg = 0 (interpolated): {g_at_zero:.3f}   "
+          f"(Part 4 predicts ~1.0)")
+    if cross is not None:
+        print(f"  gamma crosses 1.0 at sdeg = {cross:+.3f}")
+
+    print()
+    if 0.7 <= g_at_zero <= 1.5:
+        print("  SUPPORTS Part 4. Removing degree dependence restores validity:")
+        print("  a degree-neutral score gives gamma ~ 1 on a frame that was")
+        print("  otherwise unchanged. This is the point prediction, tested")
+        print("  causally, not a monotone trend that any transform would produce.")
+    elif g_at_zero > 1.5:
+        print("  NOT SUPPORTED. Even with the score made degree-neutral, the")
+        print("  procedure stays anti-conservative. Degree is therefore not the")
+        print("  channel through which selection breaks exchangeability -- some")
+        print("  other property of the clean filter is. Revise Part 4.")
     else:
-        print(f"\nOnly {len(xs)} usable beta levels -- too few to fit a curve.")
+        print("  OVERSHOOT. At sdeg = 0 the procedure is CONSERVATIVE, not valid.")
+        print("  beta is doing more than removing degree dependence -- it is also")
+        print("  distorting the score distribution. Interpret with care.")
+
+    if all(z[3] < 0.01 for z in curve if z[0] < 0.2):
+        print()
+        print("  CAVEAT: every low-sdeg level has power < 0.01. FDR near 0 there")
+        print("  is the zero-discovery artifact already documented in Part 3, not")
+        print("  a working procedure. gamma is still meaningful (it is computed")
+        print("  from null p-values, not from discoveries), but do not present")
+        print("  the FDR column as a fix.")
 
 
 if __name__ == "__main__":
