@@ -115,7 +115,13 @@ from real_data_experiment import load_any_dataset, SUPPORTED_DATASETS
 # AdaDetect, and it is the experiment this project has never run: every
 # condition in real_data_experiment.py draws calibration from labels == 0, so
 # no anomaly has ever entered a calibration set here. See theory doc Part 6.
+# random_full is NOT in the matched frame, deliberately. Matched n isolates the
+# mechanism but handicaps random to the clean pool's size (n=225 on amazon),
+# where BH needs 125 floor-tied points to reject anything and NO strategy can
+# discover. In deployment only `clean` is actually limited to its pool -- random
+# can use every eligible normal. Reported separately with in_matched_frame=False.
 STRATEGIES = ["clean", "random", "exposed_only", "true_contam_05", "true_contam_10"]
+UNMATCHED = ["random_full"]
 
 TRUE_CONTAM_RATES = {"true_contam_05": 0.05, "true_contam_10": 0.10}
 
@@ -203,8 +209,11 @@ def run_seed(graph, features, labels, seed, args):
 
     t_grid = adaptive_t_grid(n_calib)
     out = []
-    for strat in STRATEGIES:
-        if strat in TRUE_CONTAM_RATES:
+    for strat in STRATEGIES + UNMATCHED:
+        if strat == "random_full":
+            n_here = min(args.n_calib_full, len(pools["random"]))
+            calib_idx = rng.choice(pools["random"], size=n_here, replace=False)
+        elif strat in TRUE_CONTAM_RATES:
             eps = TRUE_CONTAM_RATES[strat]
             n_anom = int(round(eps * n_calib))
             n_norm = n_calib - n_anom
@@ -216,6 +225,8 @@ def run_seed(graph, features, labels, seed, args):
         else:
             calib_idx = rng.choice(pools[strat], size=n_calib, replace=False)
 
+        n_here = len(calib_idx)
+        grid_here = t_grid if strat not in UNMATCHED else adaptive_t_grid(n_here)
         p = conformal_p_values(scores[calib_idx], scores[test_idx])
         rej = benjamini_hochberg(p, args.alpha)
         k = int(rej.sum())
@@ -224,9 +235,9 @@ def run_seed(graph, features, labels, seed, args):
 
         null_p = p[test_labels == 0]
         bh_t = bh_threshold_from_rejections(k, len(test_idx), args.alpha)
-        obs = anticonservativeness(null_p, n_calib, bh_threshold=bh_t)
-        tail = left_tail_gamma(null_p, t_grid=t_grid)
-        null = exchangeable_null_pvalues(obs, n_calib, len(null_p),
+        obs = anticonservativeness(null_p, n_here, bh_threshold=bh_t)
+        tail = left_tail_gamma(null_p, t_grid=grid_here)
+        null = exchangeable_null_pvalues(obs, n_here, len(null_p),
                                          bh_threshold=bh_t,
                                          min_rank=obs["min_rank_used"],
                                          n_sim=args.n_sim, seed=4242 + seed)
@@ -234,7 +245,9 @@ def run_seed(graph, features, labels, seed, args):
         row = {
             "dataset": args.dataset, "detector": args.detector, "seed": seed,
             "strategy": strat, "alpha": args.alpha,
-            "n_calib": n_calib, "m_test": len(test_idx), "n_null": len(null_p),
+            "n_calib": n_here, "m_test": len(test_idx), "n_null": len(null_p),
+            "in_matched_frame": strat not in UNMATCHED,
+            "bh_min_rank": float(len(test_idx) / (args.alpha * (n_here + 1))),
             "calib_frac_anomalous": float(np.mean(labels[calib_idx] == 1)),
             "calib_mean_exposure": float(
                 exposure[np.isin(normal_idx, calib_idx)].mean())
@@ -247,8 +260,8 @@ def run_seed(graph, features, labels, seed, args):
             "spearman_score_degree": dep_deg["spearman_r"],
             "spearman_score_exposure": float(r_exp),
             "spearman_score_exposure_p": float(p_exp),
-            "gamma_t_lo": tail[f"gamma_t{t_grid[0]:g}"],
-            "t_lo": t_grid[0],
+            "gamma_t_lo": tail[f"gamma_t{grid_here[0]:g}"],
+            "t_lo": grid_here[0],
             "gamma_hat": obs["gamma_hat"], "mean_p": obs["mean_p"],
             "ks_uniform": obs["ks_uniform"],
             "mean_p_null_p": null["mean_p_null_p"],
@@ -260,8 +273,9 @@ def run_seed(graph, features, labels, seed, args):
     # a different n_calib means a different p-value floor 1/(n+1) and a
     # different bh_min_rank, which is precisely the confound that invalidated
     # this project's original Method B/C. Assert rather than trust.
+    matched = [r for r in out if r["in_matched_frame"]]
     for key in ("n_calib", "m_test", "n_null", "t_lo"):
-        vals = {r[key] for r in out}
+        vals = {r[key] for r in matched}
         if len(vals) != 1:
             raise AssertionError(
                 f"seed {seed}: {key} differs across strategies ({vals}). "
@@ -281,14 +295,15 @@ def report(rows, args):
           f"{'gap(d)':>8}{'gamma':>8}{'mean_p':>8}{'disc':>7}{'fdr':>7}{'power':>7}")
     print("-" * 78)
     agg = {}
-    for strat in STRATEGIES:
+    for strat in STRATEGIES + UNMATCHED:
         sub = [r for r in rows if r["strategy"] == strat]
         if not sub:
             continue
         f_ = lambda k: float(np.nanmean([r[k] for r in sub]))
         agg[strat] = {k: f_(k) for k in
                       ("gamma_t_lo", "mean_p", "realized_fdr", "power",
-                       "score_gap_cohens_d", "n_discoveries")}
+                       "score_gap_cohens_d", "n_discoveries", "n_calib",
+                       "bh_min_rank")}
         print(f"{strat:<14}{f_('calib_mean_exposure'):>10.4f}"
               f"{f_('calib_mean_degree'):>10.1f}{f_('test_mean_degree'):>9.1f}"
               f"{f_('score_gap_cohens_d'):>8.3f}{f_('gamma_t_lo'):>8.2f}"
@@ -313,26 +328,60 @@ def report(rows, args):
     print(f"  clean  calibration:  gamma={g_clean:.2f}  FDR={f_clean:.3f}")
     print()
 
-    rand_ok = (0.5 <= g_rand <= 2.0) and (f_rand <= args.alpha * 2)
+    d_rand = agg["random"]["n_discoveries"]
+    d_clean = agg["clean"]["n_discoveries"]
+
+    # A valid-looking FDR from zero discoveries is meaningless. BH scores a
+    # zero-discovery trial as FDR=0, which is how degree normalization once
+    # "fixed" the problem (Part 3) and how the beta sweep once "fixed" it
+    # (Part 5). Separate the exchangeability claim from the remedy claim.
+    exch_ok = 0.5 <= g_rand <= 2.0
     clean_broken = (g_clean > 2.0) or (f_clean > args.alpha * 2)
 
-    if rand_ok and clean_broken:
-        print("  SUPPORTS the selection-rule account. Random calibration is")
-        print("  valid at the SAME n_calib, same test set and same floor, while")
-        print("  the exposure-filtered rule breaks. The failure is caused by the")
-        print("  filtering, not by the graph, the detector, or the sample size.")
-        print()
-        print("  Practical consequence: accepting contamination into calibration")
-        print("  is SAFER than filtering it out.")
-    elif not rand_ok:
-        print("  REFUTES the selection-rule account. Random calibration is")
-        print("  ALSO broken, so the failure is not caused by the filter.")
-        print("  Something more basic is wrong -- look at the detector and the")
+    print("  --- exchangeability (does the selection rule cause the violation?) ---")
+    if exch_ok and clean_broken:
+        print("  SUPPORTED. At the SAME n_calib, same test set and same p-value")
+        print("  floor, random calibration is exchangeable and the exposure-filtered")
+        print("  rule is not. gamma is computed from null p-values and does not")
+        print("  depend on discovery counts, so this holds regardless of power.")
+    elif not exch_ok:
+        print("  REFUTED. Random calibration is ALSO non-exchangeable, so the")
+        print("  selection rule is not the cause. Look at the detector and the")
         print("  score distribution before continuing this line.")
     else:
-        print("  INCONCLUSIVE. Random is fine but clean is not clearly broken")
-        print("  on this dataset. Check whether the clean pool is large enough")
-        print("  here for the filter to bite (see the % retained in STATUS.md).")
+        print("  INCONCLUSIVE. Random is exchangeable but clean is not clearly")
+        print("  broken here -- check how much the filter actually bites.")
+
+    print()
+    print("  --- remedy (is random calibration actually USABLE?) ---")
+    if d_rand < 1:
+        print(f"  NOT ESTABLISHED. random produced {d_rand:.0f} discoveries, so its")
+        print(f"  FDR of {f_rand:.3f} is the zero-discovery artifact, not FDR control.")
+        print(f"  At n_calib={agg['random'].get('n_calib', float('nan')):.0f}, BH needs "
+              f"~{agg['random'].get('bh_min_rank', float('nan')):.0f} floor-tied points")
+        print("  before it can reject anything, so NO strategy could discover here.")
+        print("  The matched-n design isolates the mechanism but handicaps random:")
+        print("  only `clean` is genuinely limited to its pool. See random_full.")
+    elif f_rand <= args.alpha * 1.5:
+        print(f"  SUPPORTED. random discovers ({d_rand:.0f}) AND controls FDR")
+        print(f"  ({f_rand:.3f} vs nominal {args.alpha}). Accepting contamination into")
+        print("  calibration is both safer and usable.")
+    else:
+        print(f"  FAILED. random discovers but does not control FDR ({f_rand:.3f}).")
+
+    if "random_full" in agg:
+        rf = agg["random_full"]
+        print()
+        print("  --- random_full (unmatched n: what random achieves in deployment) ---")
+        print(f"  n_calib={rf.get('n_calib', float('nan')):.0f} "
+              f"gamma={rf['gamma_t_lo']:.2f} disc={rf['n_discoveries']:.0f} "
+              f"FDR={rf['realized_fdr']:.3f} power={rf['power']:.3f}")
+        if rf["n_discoveries"] >= 1 and rf["realized_fdr"] <= args.alpha * 1.5:
+            print("  Random calibration at its natural size is valid AND useful.")
+            print("  That is the deployable recommendation: do not filter.")
+        elif rf["n_discoveries"] < 1:
+            print("  Still no discoveries even unhandicapped -- the limit is the")
+            print("  detector or the graph, not the calibration rule.")
 
 
 def main():
@@ -347,6 +396,10 @@ def main():
     ap.add_argument("--n_test_normal", type=int, default=2000)
     ap.add_argument("--trim_pct", type=float, default=0.01)
     ap.add_argument("--n_sim", type=int, default=200)
+    ap.add_argument("--n_calib_full", type=int, default=4000,
+                    help="Calibration size for the unmatched random_full arm, "
+                         "which measures what random calibration achieves when "
+                         "it is NOT handicapped to the clean pool's size.")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--use_sparse_prop", action="store_true")
     args = ap.parse_args()
