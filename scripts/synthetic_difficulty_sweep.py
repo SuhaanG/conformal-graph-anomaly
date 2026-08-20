@@ -61,9 +61,18 @@ from selection_bias import (
     left_tail_gamma, adaptive_t_grid,
 )
 
-# 1.0 is the value every existing synthetic result used (4.0 sigma separation).
-# The lower end is included to find where detection becomes non-trivial.
-DEFAULT_SHIFTS = [0.15, 0.25, 0.35, 0.50, 0.75, 1.00]
+# MEASURED, not assumed: sweeping feature_shift down to 0.15 left AUROC at
+# 1.0000 at EVERY level. feature_shift is not the difficulty knob here.
+# The generator sets p_aa=0.3 against p_nn=0.005, so anomalies sit in blocks
+# 60x denser than the background. DOMINANT reconstructs the adjacency matrix,
+# so they are structurally obvious regardless of their features -- shrinking
+# the feature separation changes nothing.
+#
+# p_aa IS the knob. As p_aa approaches p_nn the anomalies stop being
+# structurally distinctive and detection has to come from features, which is
+# where the task becomes non-trivial.
+DEFAULT_P_AA = [0.005, 0.01, 0.02, 0.05, 0.10, 0.30]
+DEFAULT_SHIFTS = [1.00]
 
 
 def auroc(scores, labels):
@@ -77,8 +86,8 @@ def auroc(scores, labels):
                  / (len(pos) * len(neg)))
 
 
-def run_one(shift, seed, args):
-    cfg = GraphGenConfig(n_nodes=args.n_nodes, p_aa=0.3, p_an=0.002, p_nn=0.005,
+def run_one(shift, p_aa, seed, args):
+    cfg = GraphGenConfig(n_nodes=args.n_nodes, p_aa=p_aa, p_an=0.002, p_nn=0.005,
                          feature_shift=shift, n_anomaly_clusters=3,
                          random_state=seed)
     graph, features, labels = ContaminatedGraphGenerator(cfg).generate()
@@ -128,7 +137,7 @@ def run_one(shift, seed, args):
         obs = anticonservativeness(null_p, n_calib, bh_threshold=bh_t)
         tail = left_tail_gamma(null_p, t_grid=t_grid)
         out.append({
-            "feature_shift": shift, "seed": seed, "strategy": strat,
+            "feature_shift": shift, "p_aa": p_aa, "seed": seed, "strategy": strat,
             "auroc": au, "n_calib": n_calib, "m_test": len(test_idx),
             "gamma_t_lo": tail[f"gamma_t{t_grid[0]:g}"], "t_lo": t_grid[0],
             "mean_p": obs["mean_p"], "n_discoveries": k,
@@ -138,13 +147,18 @@ def run_one(shift, seed, args):
     # the clean-vs-random comparison meaningless.
     for key in ("n_calib", "m_test", "t_lo"):
         if len({r[key] for r in out}) != 1:
-            raise AssertionError(f"shift={shift} seed={seed}: {key} unmatched")
+            raise AssertionError(f"shift={shift} p_aa={p_aa} seed={seed}: {key} unmatched")
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shifts", type=float, nargs="+", default=DEFAULT_SHIFTS)
+    ap.add_argument("--p_aa", type=float, nargs="+", default=DEFAULT_P_AA,
+                    help="Anomaly-anomaly edge probability -- the ACTUAL difficulty "
+                         "knob. p_nn is 0.005, so p_aa=0.005 makes anomalies "
+                         "structurally indistinguishable and p_aa=0.30 is the "
+                         "trivially-separable setting every existing result used.")
     ap.add_argument("--detector", type=str, default="dominant_pygod",
                     choices=available_detectors())
     ap.add_argument("--n_nodes", type=int, default=15000)
@@ -161,17 +175,19 @@ def main():
     print(f"feature_shift sweep: {args.shifts}")
     print("Existing synthetic results all used feature_shift=1.0 (AUROC 1.000).\n")
 
+    levels = [(sh, pa) for sh in args.shifts for pa in args.p_aa]
     rows = []
-    for shift in args.shifts:
+    for shift, p_aa in levels:
         for seed in range(args.n_seeds):
-            r = run_one(shift, seed, args)
+            r = run_one(shift, p_aa, seed, args)
             if r is None:
-                print(f"  shift={shift} seed={seed}: skipped (pool too small)")
+                print(f"  shift={shift} p_aa={p_aa} seed={seed}: skipped")
                 continue
             rows.extend(r)
-        sub = [r for r in rows if r["feature_shift"] == shift]
+        sub = [r for r in rows if r["feature_shift"] == shift and r["p_aa"] == p_aa]
         if sub:
-            print(f"  shift={shift:<5} AUROC={np.mean([r['auroc'] for r in sub]):.4f}")
+            print(f"  shift={shift:<5} p_aa={p_aa:<6} "
+                  f"AUROC={np.mean([r['auroc'] for r in sub]):.4f}")
 
     if not rows:
         print("Nothing completed.")
@@ -189,20 +205,22 @@ def main():
     print("=" * 78)
     print("DOES THE SELECTION EFFECT GROW AS THE TASK GETS HARDER?")
     print("=" * 78)
-    print(f"{'shift':>7} {'AUROC':>7} | {'clean FDR':>10} {'rand FDR':>9} "
+    print(f"{'shift':>6} {'p_aa':>6} {'AUROC':>7} | {'clean FDR':>10} {'rand FDR':>9} "
           f"{'gap':>7} | {'clean g':>8} {'rand g':>7} | {'clean pow':>9}")
     print("-" * 78)
     gaps = []
-    for shift in args.shifts:
-        c = [r for r in rows if r["feature_shift"] == shift and r["strategy"] == "clean"]
-        q = [r for r in rows if r["feature_shift"] == shift and r["strategy"] == "random"]
+    for shift, p_aa in levels:
+        c = [r for r in rows if r["feature_shift"] == shift and r["p_aa"] == p_aa
+             and r["strategy"] == "clean"]
+        q = [r for r in rows if r["feature_shift"] == shift and r["p_aa"] == p_aa
+             and r["strategy"] == "random"]
         if not c or not q:
             continue
         au = np.mean([r["auroc"] for r in c])
         cf, qf = np.mean([r["realized_fdr"] for r in c]), np.mean([r["realized_fdr"] for r in q])
         cg, qg = np.nanmean([r["gamma_t_lo"] for r in c]), np.nanmean([r["gamma_t_lo"] for r in q])
         cp = np.mean([r["power"] for r in c])
-        print(f"{shift:>7.2f} {au:>7.4f} | {cf:>10.3f} {qf:>9.3f} {cf-qf:>7.3f} | "
+        print(f"{shift:>6.2f} {p_aa:>6.3f} {au:>7.4f} | {cf:>10.3f} {qf:>9.3f} {cf-qf:>7.3f} | "
               f"{cg:>8.2f} {qg:>7.2f} | {cp:>9.3f}")
         gaps.append((au, cf - qf))
 
@@ -228,7 +246,7 @@ def main():
             print("  on near-perfect separation -- report it with that caveat, and do")
             print("  not generalise it to realistic detection regimes.")
     print()
-    print("  For future synthetic runs pick the shift whose AUROC lands in")
+    print("  For future synthetic runs pick the p_aa whose AUROC lands in")
     print("  0.75-0.90. GraphGenConfig's default is deliberately unchanged so")
     print("  every existing result still reproduces.")
 

@@ -853,3 +853,71 @@ than `clean` (gamma 2.01 vs 0.59) on that seed while reversing on the next.
 That is noise from a detector with no covariate sensitivity, on a graph too
 small to resolve anything. It neither supports nor undermines Corollary 3. The
 real-data runs decide.
+
+### Part 6 results: the strategy comparison ran (amazon, weibo)
+
+**Exchangeability: CONFIRMED, and starkly.** On amazon at matched n_calib,
+matched test set, matched floor, mean over 5 seeds:
+
+    strategy         calib_deg  test_deg   gap(d)   gamma   mean_p
+    clean                105.6     737.2   -1.252   13.22   0.1438
+    random               761.4     737.2   -0.005    0.82   0.5007
+    exposed_only         728.1     737.2   +0.013    1.01   0.5067
+    true_contam_05       727.2     737.2   -0.010    0.72   0.4976
+    true_contam_10       732.2     737.2   +0.023    0.75   0.5077
+    random_full (n=4000) 742.5     737.2   +0.002    1.16   0.5003
+
+The clean filter selects calibration at 1/7th the test population's degree;
+every other rule -- including calibration containing 10% ACTUAL ANOMALIES --
+lands within 2% of the test set and is exchangeable (gamma 0.72-1.16,
+mean_p ~ 0.50). Only the covariate-shifting rule breaks, exactly as Part 6
+predicts, and gamma is computed from null p-values so this does not depend on
+discovery counts.
+
+**Prediction 4 was WRONG, informatively.** exposed_only is NOT broken
+(gamma 0.96-1.01). Filtering per se does not hurt; filtering that SHIFTS a
+score-relevant covariate does. On amazon nearly every high-degree node has an
+anomalous neighbour, so "exposed" is nearly the whole population while
+"unexposed" is the low-degree fringe. Corollary 1 must be restated in terms of
+the induced covariate shift, not the act of filtering.
+
+**The remedy claim is NOT established, and something bigger surfaced.**
+random_full at n_calib=4000 has bh_min_rank ~ 7 -- only seven test points need
+to beat the whole calibration set -- and still produced ZERO discoveries.
+Fewer than 7 of amazon's 821 anomalies outrank 4000 random normals under
+dominant_pygod: with score-degree Spearman +0.918, the detector's top ranks
+are HIGH-DEGREE NORMALS, not anomalies. AUROC ~0.97 measures average ranking,
+not top-of-list precision.
+
+Which reframes clean's 1527 "discoveries" at FDR 0.787: ~325 true, ~1202
+false. **Every discovery this pipeline ever made on amazon was manufactured by
+the validity failure.** The degree gap let nearly all test nodes outrank the
+low-degree calibration set, BH fired en masse, and the hits among them were
+along for the ride. Under any VALID calibration, this detector detects nothing
+on amazon. Power without validity was an illusion of the broken guarantee.
+
+**Weibo: consistent once the dilution is accounted for.** Strategy comparison
+shows clean gamma 1.42 vs random 0.82. Milder than the matrix's gamma ~ 7
+because this design's test set is a random exposed/unexposed MIXTURE (the
+documented conservative choice), while the matrix frame tests against the
+fully-exposed complement -- on weibo the clean pool is 70% of normals, so the
+dilution is large. Directionally identical, magnitude scaled by the frame.
+
+**A correction to the weibo exposure-channel claim.** The r=0.111 repeatedly
+cited for weibo's exposure->score signal was measured on DEGREE-NORMALIZED
+scores (exposure_degree_confound_check, degree_norm=True; r_raw in the same
+file is 0.045). On raw scores the strategy comparison measures +0.016. The
+exposure channel on weibo is WEAK on raw scores; earlier statements that weibo
+"fails through exposure" overstated this. What the weibo matrix failure (gamma
+~7, FDR 0.634) actually runs through is not yet pinned down -- smaller degree
+gap amplified by the full-separation frame is the leading candidate, but it is
+OPEN, not explained.
+
+### The difficulty sweep failed and was rebuilt
+
+feature_shift down to 0.15 left AUROC at 1.0000 at every level: with p_aa=0.3
+against p_nn=0.005, anomalies sit in 60x denser blocks and are structurally
+obvious to a reconstruction detector regardless of features. p_aa is the real
+difficulty knob and the sweep now varies it (0.005 -> 0.30). Note the frozen
+detector cannot validate this locally -- its structure decoder is dead, so its
+AUROC is feature-only and insensitive to p_aa by construction.
