@@ -172,6 +172,65 @@ def run_cell(dataset, detector, seed, args, cached_graph):
     return row
 
 
+def block_permutation_p(x, y, blocks, n_perm=10000, seed=0, negative=False):
+    """Spearman p-value that respects the crossed design.
+
+    The 20 cells are 5 detectors x 4 datasets, so they are NOT 20 independent
+    units, and scipy's Spearman p-value -- which assumes they are -- is
+    anti-conservative here. This permutes y only WITHIN blocks (detector, or
+    dataset), which preserves the block structure under the null and gives a
+    valid p-value for "does the association survive once detector identity, or
+    dataset identity, is held fixed?"
+
+    negative=True when the expected association is negative (mean_p).
+    """
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    blocks = np.asarray(blocks)
+    obs = stats.spearmanr(x, y).statistic
+    if not np.isfinite(obs):
+        return np.nan, np.nan
+    rng = np.random.default_rng(seed)
+    idx_by_block = [np.where(blocks == b)[0] for b in np.unique(blocks)]
+    count = 0
+    for _ in range(n_perm):
+        yp = y.copy()
+        for ix in idx_by_block:
+            yp[ix] = rng.permutation(y[ix])
+        r = stats.spearmanr(x, yp).statistic
+        if np.isfinite(r) and ((r <= obs) if negative else (r >= obs)):
+            count += 1
+    return float(obs), float((count + 1) / (n_perm + 1))
+
+
+def within_group_report(cell_rows, group_key, other_key, stat, negative):
+    """Correlation computed WITHIN each level of group_key, across other_key.
+
+    This is the unit of analysis that is not confounded by group identity. The
+    pooled n=20 correlation can be driven by detectors differing on both axes
+    for reasons unrelated to the mechanism; correlating within a detector,
+    across datasets, cannot be.
+
+    Reports each group's rho plus an exact sign test over the groups, which is
+    the honest aggregate given only a handful of points per group.
+    """
+    rhos = {}
+    for g in sorted({k[0] if group_key == "dataset" else k[1] for k in cell_rows}):
+        pts = [(v["spearman_score_degree"], v[stat]) for k, v in cell_rows.items()
+               if (k[0] if group_key == "dataset" else k[1]) == g]
+        pts = [(a, b) for a, b in pts if np.isfinite(a) and np.isfinite(b)]
+        if len(pts) < 3:
+            rhos[g] = np.nan
+            continue
+        a, b = zip(*pts)
+        rhos[g] = stats.spearmanr(a, b).statistic
+    finite = [r for r in rhos.values() if np.isfinite(r)]
+    n_right = sum((r < 0) if negative else (r > 0) for r in finite)
+    # Exact one-sided sign test against p=0.5.
+    sign_p = (stats.binomtest(n_right, len(finite), 0.5, alternative="greater").pvalue
+              if finite else np.nan)
+    return rhos, n_right, len(finite), sign_p
+
+
 def report(rows, args):
     """Cross-cell correlation between the proposed cause and the effect."""
     print("\n" + "=" * 78)
@@ -235,10 +294,62 @@ def report(rows, args):
         print(f"  {s:<14} {rho:>8.4f} {pv:>10.4f}   {direction}"
               f"{'  <-- agrees' if agrees else '  <-- WRONG SIGN'}")
 
+    # --- The pooled correlation above is NOT sufficient on its own. ---
+    # 5 detectors x 4 datasets are not 20 independent units, so the p-values
+    # printed above are anti-conservative. And a block of conservative cells at
+    # one end plus one extreme detector at the other can carry a rank
+    # correlation on their own. Both checks below were added after a review
+    # found the pooled result did not survive them.
+    cellmap = {}
+    for (ds, det), rs in cells.items():
+        cellmap[(ds, det)] = {
+            k: float(np.mean([r[k] for r in rs if np.isfinite(r[k])]))
+            if any(np.isfinite(r[k]) for r in rs) else np.nan
+            for k in ["spearman_score_degree"] + HEADLINE_STATS}
+
     print()
-    if all(verdicts) and verdicts:
-        print("  VERDICT: consistent with Part 4. The effect tracks the proposed")
-        print("  cause across cells. Part 4 may be written up as Theorem 2.")
+    print("-" * 78)
+    print("BLOCK PERMUTATION (valid under the crossed design)")
+    print("-" * 78)
+    keys = sorted(cellmap)
+    xv = [cellmap[k]["spearman_score_degree"] for k in keys]
+    print(f"  {'statistic':<14} {'rho':>8} {'perm p':>9} {'perm p':>9}")
+    print(f"  {'':<14} {'':>8} {'(w/in det)':>9} {'(w/in data)':>9}")
+    for st in HEADLINE_STATS:
+        yv = [cellmap[k][st] for k in keys]
+        neg = (st == "mean_p")
+        rho, p_det = block_permutation_p(xv, yv, [k[1] for k in keys],
+                                         n_perm=args.n_perm, negative=neg)
+        _, p_ds = block_permutation_p(xv, yv, [k[0] for k in keys],
+                                      n_perm=args.n_perm, negative=neg)
+        print(f"  {st:<14} {rho:>8.4f} {p_det:>9.4f} {p_ds:>9.4f}")
+
+    print()
+    print("-" * 78)
+    print("WITHIN-DETECTOR (not confounded by detector identity)")
+    print("-" * 78)
+    within_ok = []
+    for st in HEADLINE_STATS:
+        neg = (st == "mean_p")
+        rhos, n_right, n_tot, sign_p = within_group_report(
+            cellmap, "detector", "dataset", st, neg)
+        detail = "  ".join(f"{g}={r:+.2f}" if np.isfinite(r) else f"{g}=na"
+                           for g, r in sorted(rhos.items()))
+        print(f"  {st:<14} {n_right}/{n_tot} right-signed, sign-test p={sign_p:.4f}")
+        print(f"      {detail}")
+        within_ok.append(bool(np.isfinite(sign_p) and sign_p < 0.05))
+
+    print()
+    if all(verdicts) and verdicts and all(within_ok):
+        print("  VERDICT: consistent with Part 4, and it survives both the block")
+        print("  permutation and the within-detector check. Part 4 may be written")
+        print("  up as Theorem 2.")
+    elif all(verdicts) and verdicts:
+        print("  VERDICT: pooled correlation agrees, but it does NOT fully survive")
+        print("  the block permutation / within-detector checks. That is the exact")
+        print("  objection a referee will raise. Report the within-detector result")
+        print("  as primary and the pooled n=20 as support -- not the reverse --")
+        print("  and do not call this a confirmed theorem yet.")
     elif any(verdicts):
         print("  VERDICT: MIXED. Some statistics track, others do not. Report this")
         print("  honestly -- a partial result is not a confirmation, and which")
@@ -265,6 +376,8 @@ def main():
                              "resolution floor of ~0.005 on null_p; raise it only if "
                              "a cell needs to separate p=0.01 from p=0.001.")
     parser.add_argument("--n_degree_bins", type=int, default=12)
+    parser.add_argument("--n_perm", type=int, default=10000,
+                        help="Permutations for the block permutation test.")
     parser.add_argument("--degree_norm", type=str, default="off",
                         choices=["on", "off"],
                         help="OFF by default and deliberately so: "

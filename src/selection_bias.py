@@ -56,7 +56,32 @@ Relative discriminating power, measured on a planted calibration shift
 gamma_at_bh is the theoretically meaningful quantity -- it is where BH actually
 cut -- but it is evaluated at a single threshold with few points beneath it, so
 its variance is enormous. Report it for interpretation; do NOT use it as the
-primary statistic. mean_p is the most stable, ks_uniform the best compromise.
+primary statistic. mean_p is the most stable.
+
+THE ENDPOINT TRAP (fixed, but worth understanding before changing this code).
+Both sup-type statistics are evaluated over a RESTRICTED window, capped above
+at n_calib//2. The cap is load-bearing, not tidying. At the final grid point
+t = 1 we have F_hat(1) = 1 identically, so F_hat(t)/t = 1 and F_hat(t) - t = 0
+there for EVERY possible input. A sup taken over a window containing t = 1 is
+therefore floored: gamma_hat returns exactly 1.0000 and ks_uniform exactly
+0.000000 for ANY conservative input, regardless of how conservative it is.
+
+That is not a cosmetic issue. In the first 20-cell matrix run, roughly half the
+cells were conservative detectors, and all of them reported those two identical
+boundary values. A rank correlation computed over a block of exact ties at an
+extreme is measuring the tie structure as much as the effect. With the window
+capped, the same inputs now separate properly:
+
+    family              gamma_hat   mean_p    ks_uniform
+    very conservative      0.2502   0.7513     -0.234375
+    conservative           0.5044   0.6658     -0.185292
+    uniform                1.0233   0.4984     +0.006898
+    anti-conservative      1.7487   0.3734     +0.190761
+
+Any matrix produced BEFORE this fix has degenerate gamma_hat and ks_uniform
+columns and must be regenerated. mean_p was never affected -- it is a plain
+mean with no sup and no endpoint -- so mean_p results from an older run remain
+valid, which matters because it is also the most stable of the three.
 """
 
 import numpy as np
@@ -146,13 +171,23 @@ def anticonservativeness(null_p_values: np.ndarray,
     counts = np.searchsorted(np.sort(p), grid, side="right")
     f_hat = counts / n_null
 
-    # --- gamma_hat: sup of the ratio, restricted away from the noisy floor ---
-    lo = min(max(min_rank, 1), len(grid)) - 1  # grid index for rank=min_rank
-    ratio = f_hat[lo:] / grid[lo:]
+    # --- gamma_hat: sup of the ratio, restricted at BOTH ends ---
+    # The upper restriction is not cosmetic. At the last grid point t=1 we have
+    # F_hat(1) = 1 identically, so F_hat(t)/t = 1 there for EVERY input. A sup
+    # taken over a range including t=1 therefore has a hard floor of 1, and any
+    # conservative detector returns exactly 1.0000 -- a degenerate value shared
+    # by every conservative cell. That produced a block of exact ties at the
+    # boundary in the 20-cell matrix, which is precisely the kind of structure
+    # that manufactures a rank correlation. Capping at n_calib//2 keeps the sup
+    # inside the region where BH actually operates and lets conservative inputs
+    # score genuinely below 1.
+    lo = min(max(min_rank, 1), len(grid)) - 1
+    hi = max(lo + 1, len(grid) // 2)
+    ratio = f_hat[lo:hi] / grid[lo:hi]
     if len(ratio):
         j = int(np.argmax(ratio))
         out["gamma_hat"] = float(ratio[j])
-        out["gamma_argmax_t"] = float(grid[lo:][j])
+        out["gamma_argmax_t"] = float(grid[lo:hi][j])
 
     # --- gamma_at_bh: the ratio where BH actually cut ---
     if bh_threshold is not None and np.isfinite(bh_threshold) and bh_threshold > 0:
@@ -168,7 +203,11 @@ def anticonservativeness(null_p_values: np.ndarray,
     # observations; these are not, because they share a calibration set. That
     # formula returned p = 3e-07 on a VERIFIED-exchangeable simulation. Use
     # exchangeable_null_pvalues() instead.
-    out["ks_uniform"] = float(np.max(f_hat - grid))
+    # Same endpoint trap as gamma_hat: f_hat - grid is exactly 0 at t=1 for
+    # every input, so an unrestricted max is floored at 0 and every
+    # conservative detector returns exactly 0.000000. Restricted to the same
+    # window so conservative inputs go properly negative.
+    out["ks_uniform"] = float(np.max(f_hat[lo:hi] - grid[lo:hi]))
 
     return out
 
