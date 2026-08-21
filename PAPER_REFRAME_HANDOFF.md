@@ -353,6 +353,220 @@ and a faculty collaborator (section 8.8).
 
 ---
 
+## 2B. Writing the TMLR paper (Gopal — this is your section)
+
+**Venue decided: TMLR.** Not TNSE, not AISTATS, not IEEE. Rationale in 8.1.
+Short version: TMLR's acceptance criteria are (1) are the claims supported by
+evidence and (2) would some subset of the ML audience care. **Novelty is
+explicitly not required.** This paper's weakness is novelty and its strength is
+rigor, so TMLR is the venue whose bar it clears most comfortably (~40-50% vs
+~25% at TNSE).
+
+**DO NOT port the IEEE draft.** Its premise is falsified (2A.1) and every
+results table in it came from the broken detector. Start from the TMLR
+template and pull pieces across deliberately, per 2B.3.
+
+### 2B.1 Title and abstract
+
+    Calibration Selection, Not Contamination, Breaks Conformal
+    FDR Control in Graph Anomaly Detection
+
+The abstract must state the claims TMLR will check evidence against. Draft:
+
+> Conformal prediction converts graph anomaly scores into p-values with a
+> finite-sample FDR guarantee, provided the calibration set is exchangeable
+> with normal test data. A natural precaution on graphs is to build the
+> calibration set from nodes with no anomalous neighbours, avoiding
+> contamination propagated by message passing. We show this precaution is the
+> failure mode. Filtering on neighbourhood exposure is a covariate filter: on
+> Amazon it draws calibration at one seventh the test population's mean degree,
+> and a detector whose score correlates with degree inherits that shift,
+> driving realized FDR to 0.787 against a nominal 0.10. Holding the graph, the
+> filter, and the resulting degree shift fixed while changing only the detector
+> removes the failure entirely, isolating detector covariate-sensitivity as the
+> operative condition; the pattern replicates on a second graph. Injecting
+> ACTUAL anomalies into calibration at 5% and 10% leaves exchangeability
+> intact, so the failure the literature guards against is benign while the
+> standard guard is not. We give a label-free diagnostic: the standardized
+> score gap between calibration and test predicts the violation and requires no
+> ground truth. Finally, on four standard benchmarks, 16 of 20
+> detector-dataset pairs fail to beat an untrained node-degree lookup by more
+> than 0.02 AUROC. We identify one configuration that is both valid and useful,
+> and report plainly that its usefulness does not generalize.
+
+### 2B.2 Section skeleton
+
+    1  Introduction          the instinct to filter; why it is a covariate
+                             filter; contributions as checkable claims
+    2  Related Work          PORT from IEEE draft, reframe positioning
+    3  Preliminaries         PORT. Keep Prop 1 but state that the selection
+                             rule VIOLATES its precondition -- Prop 1 is not
+                             contradicted, it is inapplicable under filtering
+    4  Selection-Induced Non-Exchangeability
+                             NEW. The chain: selection -> covariate shift ->
+                             (x score sensitivity) -> score gap -> gamma
+    5  An Extended Discovery Condition
+                             PORT Lemma 1 / Prop 2 / Cor 1 / Remarks 1-2
+                             intact. Add: this explains why true contamination
+                             is safe (injected anomalies raise the floor)
+    6  Experimental Setup    matched-frame protocol, gamma estimator,
+                             simulated exchangeable null, frame invariants
+    7  Results               6 subsections, see 2B.4
+    8  Discussion            what we claim vs do not; power is weak; the claim
+                             is about VALIDITY
+    9  Conclusion
+
+### 2B.3 What to port from the IEEE draft, and what to burn
+
+**PORT MOSTLY INTACT**
+  - Section 2 Related Work (reframe the positioning paragraph only)
+  - Section 3 Preliminaries through the p-value construction
+  - Proposition 1 and its discussion
+  - Section 3.1 "An Extended Discovery Condition" ENTIRE -- Lemma 1,
+    Proposition 2, Corollary 1, Remarks 1 and 2. This is correct work.
+  - Algorithm 1
+  - Appendix A entirely (closed-form threshold, PRDS testing, e-BH scale
+    mismatch). Real contributions, honestly reported.
+  - Multiple Testing Correction subsection
+  - Reproducibility statement (now points at a real repo)
+
+**BURN**
+  - Title, abstract, introduction -- premise falsified
+  - EVERY results table in Section 5 -- broken-detector numbers
+  - "Fails into silence" everywhere (abstract, results, conclusion, Figure 1)
+  - The Yelp and Tolokers exclusion paragraphs -- both since resolved
+  - Table `related-comparison` "Contam. -> Yes" for Ours -- never tested
+  - Conclusion -- rests on the false claim
+
+**FIX IF PORTED**
+  - Amazon AUROC stated as 0.893; measured 0.7542
+  - `\markboth{...TKDE...}` -- irrelevant in TMLR, delete
+  - Author block and ORCID -- TMLR is ANONYMOUS at submission.
+    Non-anonymous submissions are rejected without review.
+  - `\bibliography{tmlr}` in the template -> `\bibliography{references}`
+  - Re-add the macros (\ncal, \pval, \calibset, ...) -- Section 5 needs them
+
+### 2B.4 Results section, subsection by subsection
+
+    7.1  Selection filtering breaks FDR control
+         Amazon matched-frame table (2A.2). Lead with calib_deg 105.6 vs
+         test_deg 737.2 -- the 7x gap is the most legible single fact.
+    7.2  The failure is conditional on the detector
+         pygod vs gae on the SAME graph and filter (2A.4b), plus the tolokers
+         replication. This is the strongest evidence in the paper; give it room.
+    7.3  True contamination is harmless
+         true_contam_05/10 stay exchangeable. Connect to Section 5: the
+         resolution floor is why.
+    7.4  The score gap as a label-free diagnostic
+         The law + the argument that it is computable without labels.
+         STATE HONESTLY that gap -> gamma is near definitional.
+    7.5  Benchmark AUROC largely tracks node degree
+         16/20 table + the p_aa sweep showing AUROC crossing 0.5 exactly where
+         the degree ratio crosses 1.0, with features held identical.
+    7.6  A working configuration, and its limits
+         gae + unfiltered on amazon works; the same on tolokers finds nothing.
+         Do not bury the second half.
+
+### 2B.5 Every number you may cite, with its source
+
+Do not cite a number that is not in this table or in a committed CSV.
+
+| Quantity | Value | Source |
+|---|---|---|
+| Synthetic clean FDR | 0.132 +/- 0.037, d=0.837, p=0.0007 | `condition_comparison_pygod.csv` |
+| Synthetic contaminated | 0.091 +/- 0.026 | same |
+| Synthetic adversarial | 0.086 +/- 0.026 | same |
+| Amazon clean, pygod: calib_deg | 105.6 | `calibration_strategy_amazon_dominant_pygod.csv` |
+| Amazon test_deg | 737.2 | same |
+| Amazon clean gap_d | -1.252 | same |
+| Amazon clean gamma | 13.22 | same |
+| Amazon clean discoveries / FDR | 1527 / 0.787 | same |
+| Amazon random gamma | 0.82 | same |
+| Amazon true_contam_05 gamma | 0.72 | same |
+| Amazon true_contam_10 gamma | 0.75 | same |
+| Amazon pygod sdeg | +0.902 | same |
+| Amazon gae: calib_deg / test_deg | 106.3 / 771.3 | `calibration_strategy_amazon_gae.csv` |
+| Amazon gae gap_d / gamma | -0.038 / 0.76 | same |
+| Amazon gae sdeg | -0.026 | same |
+| Amazon gae random_full | n=4000, gamma 0.96, 101 disc, FDR 0.059, power 0.116 | same |
+| Tolokers gae: calib_deg / test_deg | 5.7 / 73.8 | `calibration_strategy_tolokers_gae.csv` |
+| Tolokers gae gap_d / gamma | +0.052 / 0.28 | same |
+| Tolokers gae random gamma | 0.99 | same |
+| Tolokers gae sdeg | -0.172 | same |
+| Degree baseline: cells failing to beat | 16 of 20 | `degree_baseline_check.csv` |
+| amazon best free baseline | 0.7446 (neg_degree) | same |
+| reddit / tolokers / weibo baselines | 0.5561 / 0.5596 / 0.7782 | same |
+| best detector per dataset | 0.8589 gae / 0.5769 / 0.5618 / 0.7733 | same |
+| (A1) monotone, amazon/reddit/tolokers | 25/25 seeds, tau ~ -0.92 | `selection_bias_matrix.csv` |
+| (A1) monotone, weibo | 0/25 seeds, tau -0.02 | same |
+| p_aa sweep AUROC | 0.0793 -> 1.0000 across p_aa 0.005 -> 0.3 | `synthetic_difficulty_dominant_pygod.csv` |
+| degree-only AUROC, same sweep | 0.0330 -> 1.0000 | theory doc Part 7 |
+
+**BLOCKER: five of these CSVs are NOT in the repo yet.** They exist only in
+`results/logs/` on the H200. Until they are copied to `results/published/` and
+committed, Gopal cannot verify any number sourced from them, and the paper
+would be citing figures with no checkable provenance -- the exact problem
+`results/published/README.md` exists to prevent.
+
+    PRESENT   condition_comparison_pygod.csv
+    PRESENT   selection_bias_matrix.csv          (regenerate first, see 2A.7)
+    TO COPY   calibration_strategy_amazon_dominant_pygod.csv
+    TO COPY   calibration_strategy_amazon_gae.csv
+    TO COPY   calibration_strategy_tolokers_gae.csv
+    TO COPY   degree_baseline_check.csv
+    TO COPY   synthetic_difficulty_dominant_pygod.csv
+
+On the H200, after the runs finish:
+
+    cp results/logs/*.csv results/published/
+    git add results/published/ && git commit -m "Add result CSVs" && git push
+
+Then add an index row for each in `results/published/README.md` naming the
+claim it backs. **Do this before writing Section 7.**
+
+**NEEDS RECOMPUTING BEFORE USE:** the score-gap law (Spearman -0.7285,
+p=9.11e-04, 17 cells). It used `gamma_hat` from the pre-endpoint-fix matrix,
+which had 18 rows floored at exactly 1.000000. Recompute from the regenerated
+CSV. A `mean_p`-based version is unaffected and can be used immediately.
+
+### 2B.6 Claims you must NOT make
+
+Each of these was in the IEEE draft and each is false:
+
+  - "Realized FDR stays at or below nominal in every condition." Clean is
+    0.132, significantly ABOVE (p=0.0007).
+  - "The procedure fails into silence." Dead -- under the correct detector the
+    severity sweep gives AUROC 1.0 and power 1.0 at every level.
+  - "We study calibration contamination." No anomaly ever entered a
+    calibration set in the original conditions (2A.1).
+  - "The clean condition results are consistent with Proposition 1 in every
+    trial." Inverted -- clean is the condition that breaks.
+  - Amazon AUROC 0.893. Measured 0.7542.
+  - Anything asserting the detectors usefully detect anomalies. Under valid
+    calibration, power is 0.116 at best and zero on most graphs.
+
+And two framing rules:
+
+  - **Claim VALIDITY, not performance.** The paper is about when the guarantee
+    holds. It is not a detection-performance paper and cannot survive being
+    read as one.
+  - **State the near-definitional gap yourself**, in Section 4, before a
+    reviewer finds it. TMLR rewards that; hiding it is what gets papers
+    rejected there.
+
+### 2B.7 TMLR mechanics
+
+  - **Anonymous.** No names, no ORCID, no acknowledgements, no "our previous
+    work". Non-anonymous submissions are rejected without review.
+  - Rolling submission, no deadline. Do not rush.
+  - Reviews are public on OpenReview -- assume the submission is visible.
+  - Action-editor model: one AE plus reviewers, decisions on the two criteria
+    above rather than on a score threshold.
+  - The repo is a genuine asset. Full history, tests, and a record of
+    falsifying our own hypothesis twice. Point at it in Reproducibility.
+
+---
+
 ## 3. The story, chronologically
 
 1. The paper claimed FDR control survives calibration contamination from message
@@ -900,48 +1114,49 @@ Graphs? A Joint Condition on Base Rate, Calibration Size, and Detector Quality*
 then said TAI, then TNSE. Those were all written before section 2A. The honest
 current read is below, and it is CONDITIONAL on one experiment.**
 
-### 8.1 The degree check ran; the venue picture is now settled enough to act
+### 8.1 DECIDED: TMLR
 
-Both gating experiments are done (2A.4, 2A.4b). Current honest read:
+Both gating experiments ran (2A.4, 2A.4b) and the venue question is settled.
+**Target TMLR.** The writing guide is section 2B.
 
-| venue | deadline | fit | estimate |
+| venue | fit | estimate | deadline |
 |---|---|---|---|
-| **AISTATS** | ~Oct, for May conf | Best. Statistics-first, values a rigorous exchangeability argument and a clean conditional result | **~20%** |
-| **IEEE TNSE** | rolling | Very good. Graph/network science, and 2A.4b gives it the "here is when it works" section it was missing | **~55-65%** |
-| TMLR | rolling | Good. Reviews correctness over novelty; would likely take this with revisions | ~60% |
-| KDD | ~Feb | Good scope, but wants the remedy to be strong | ~10-15% |
-| UAI | ~Feb | Similar to AISTATS, slightly lower prestige. Pick one, not both | ~15-20% |
-| COPA 2027 | ~May 2027 | Best topical fit, lowest name recognition | ~40% |
-| NeurIPS D&B | **~May 2027** | Would fit 2A.4 well, but the timing is dead for this cycle | n/a |
+| **TMLR** | **Best.** Judges correctness and interest, NOT novelty -- which is exactly this paper's weak/strong split | **~40-50%** | rolling |
+| IEEE TNSE | Good scope, but competing on novelty and prestige where we are weakest | ~25% | rolling |
+| AISTATS | Wants theory; ours is the near-definitional part | ~10-15% | ~Oct |
+| NeurIPS D&B | 2A.4 would suit it, but next deadline is ~May 2027 | n/a | dead cycle |
+| IEEE TAI / TETCI | Fallbacks if TMLR rejects | ~35-40% | rolling |
 
-**NeurIPS D&B is off the table on timing, not merit.** The degree-baseline
-result (2A.4) would have suited it, but the next deadline is roughly nine
-months out and that conflicts with everything else on the timeline.
+**Why TMLR over TNSE, concretely.** This paper's weakness is novelty -- the
+gap-to-gamma link in 2A.3 is near definitional and any reviewer who knows
+conformal prediction will see it. Its strengths are rigor, reproducibility,
+honest self-correction, and empirical breadth. TMLR's stated criteria are
+exactly (1) claims supported by evidence and (2) some subset of the audience
+would care. It is the one venue where the paper is judged on its strengths
+rather than its weakness.
 
-**Recommended: submit to AISTATS in October as the real attempt, with TNSE as
-the fallback.** An AISTATS rejection still returns reviews that improve the
-TNSE version, so the sequence costs little. TMLR is the no-deadline safety net
-if timing pressure returns.
+Costs, stated plainly: no impact factor, weaker recognition outside ML, and
+submissions are public on OpenReview. For an ML-for-Science MS the reviewers
+are ML people who know TMLR, so the recognition cost is small in that context.
+
+**Fallback order if TMLR rejects:** TNSE, then TAI. TMLR reviews are public and
+substantive, so a rejection still improves whatever goes out next.
 
 ### 8.2 What changed the estimate upward
 
-Before 2A.4b the paper was a cautionary null: "this fails, and fixing it
-reveals the method never worked." That is publishable but weak.
-
-After 2A.4b it is a conditional result with an existence proof: the mechanism
-is real, the condition is measurable without labels, and there is a
-configuration that is both valid and useful (gae + unfiltered calibration,
-FDR 0.059 at power 0.116). "Here is when it breaks, here is how to check, here
-is a setting that works" is a substantially stronger paper than "here is when
-it breaks."
+Before 2A.4b this was a cautionary null: "this fails, and fixing it reveals the
+method never worked." After 2A.4b it is a conditional result with an existence
+proof -- the mechanism is real, the condition is measurable without labels, and
+one configuration is both valid and useful (gae + unfiltered calibration, FDR
+0.059 at power 0.116). "Here is when it breaks, here is how to check, here is a
+setting that works" is a materially stronger paper.
 
 ### 8.3 What would move it further, in order of value
 
-  1. **A faculty co-author.** Fixes the arXiv endorsement, improves the paper,
-     and changes how referees read a submission from unaffiliated students.
-     Worth more than any remaining experiment.
-  2. **Replication of 2A.4b on tolokers and weibo.** One run each. The
-     conditional claim rests on one dataset today.
+  1. **A faculty co-author.** Fixes arXiv endorsement, tightens the theory
+     section, and changes how referees read a submission from unaffiliated
+     students. Worth more than any remaining experiment.
+  2. **Replication of 2A.4b on weibo and reddit.** One run each.
   3. **Writing.** The bottleneck, and it has been for weeks.
 
 ### 8.4 What is off the table, and why
