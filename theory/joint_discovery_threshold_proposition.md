@@ -660,6 +660,7 @@ This subsumes prediction 2 and should replace it as the primary test.
 
 Weibo shows median FDR 0.634 with no degree tilt and, for three of five
 detectors, negative score-degree correlation. gamma at the BH threshold is
+<<<<<<< HEAD
 ~7.0-7.4 there for FOUR of five detectors (anomalydae, dominant_ours,
 dominant_pygod, gae), essentially flat regardless of each detector's own
 sdeg sign (dominant_pygod +0.447; the other three -0.09 to -0.13) --
@@ -714,6 +715,14 @@ Weibo is also the one dataset with a measurable contamination signal
 `exposure_degree_confound_check.csv`, though the raw-score version is weaker,
 r=0.016, per Part 6's correction below), which may or may not be connected
 to whatever ocgnn is insensitive to.
+=======
+~7.0-7.4 there regardless of detector. Something dataset-level is breaking
+exchangeability that has nothing to do with degree. This is a genuine open
+question and probably a second finding rather than a nuisance. Weibo is also
+the one dataset with a measurable contamination signal (exposure->score
+r=0.111, p=1.4e-23, surviving control for degree), which may or may not be
+connected.
+>>>>>>> 91170b0c16207c8ad51f9fe4db244485a1f8b29d
 
 ### The empirical result that depends on none of this
 
@@ -1211,4 +1220,5 @@ USABILITY claim does not. amazon is so far the only graph where a configuration
 is both valid and useful (gae + unfiltered, FDR 0.059 at power 0.116). The
 paper should state this plainly: the diagnostic generalises, a working
 configuration has been demonstrated once, and whether useful power is
+achievable in general is open.
 achievable in general is open.

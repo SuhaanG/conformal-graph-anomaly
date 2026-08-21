@@ -9,6 +9,12 @@ data/processed/*
 !data/processed/.gitkeep
 results/logs/*
 !results/logs/.gitkeep
+
+# results/published/ is deliberately NOT ignored. results/logs/ is scratch --
+# rerun freely, overwrite freely. Anything a paper claim depends on gets
+# copied into results/published/ and committed, because the degree-confound
+# numbers existed only inside commit messages for a while and that is not a
+# place results can live. See results/published/README.md.
 .DS_Store
 
 # Dataset caches downloaded at runtime by the PyTorch Geometric / PyGOD /  DGL

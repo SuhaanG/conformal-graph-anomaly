@@ -330,7 +330,7 @@ DEGREE_NORM_BY_DATASET = {
 def run_real_data_trial(graph, features, labels, contamination_condition, alpha, seed,
                          n_epochs, device, calib_frac=0.4, score_alpha=0.5, use_degree_norm=True,
                          trim_pct=0.01, use_sparse_prop=False, detector="dominant_ours",
-                         log_ranks=False, n_rank_points=25):
+                         log_ranks=False, n_rank_points=25, diagnostics_out=None):
     """log_ranks defaults to False and the trial-row return value is
     UNCHANGED in that case, so every existing call site and every existing
     output CSV's schema is untouched. When True, additionally computes
@@ -346,7 +346,14 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     cannot explain and the extended proposition was built to cover.
 
     Return value: if log_ranks=False, returns the trial dict alone (as
-    before). If log_ranks=True, returns (trial_dict, rank_rows)."""
+    before). If log_ranks=True, returns (trial_dict, rank_rows).
+
+    diagnostics_out: pass a dict to have it FILLED IN PLACE with the
+    intermediate quantities the selection-bias analysis needs -- the null
+    p-values, the calibration/test index sets, per-node scores and degrees.
+    Deliberately an out-parameter rather than another return value: this
+    function's return type already varies with log_ranks, and a third variant
+    would be a trap. Passing None (the default) changes nothing."""
     scores = score_nodes(detector, graph, features, labels, seed=seed,
                           n_epochs=n_epochs, device=device,
                           use_sparse_prop=use_sparse_prop, score_alpha=score_alpha)
@@ -445,6 +452,27 @@ def run_real_data_trial(graph, features, labels, contamination_condition, alpha,
     realized_fdr = (np.sum(discoveries & (test_labels == 0)) / n_discoveries) if n_discoveries > 0 else 0.0
     power = (np.sum(discoveries & (test_labels == 1)) / len(anomaly_idx)) if len(anomaly_idx) > 0 else 0.0
 
+    if diagnostics_out is not None:
+        # Null p-values ONLY -- the anti-conservativeness factor is a statement
+        # about the null distribution, so including anomalies here would make
+        # gamma meaningless. test_labels == 0 selects exactly the normal nodes
+        # that survived trimming, which is the population that must be
+        # exchangeable with calibration for BH's guarantee to hold.
+        null_mask = test_labels == 0
+        diagnostics_out.update({
+            "null_p_values": p_values[null_mask],
+            "all_p_values": p_values,
+            "test_labels": test_labels,
+            "calib_idx": calib_idx,
+            "test_idx": test_idx,
+            "scores": scores,
+            "normal_idx": normal_idx,
+            "exposure": exposure,
+            "eligible_normal_idx": eligible_normal_idx,
+            "n_calib": len(calib_idx),
+            "n_discoveries": int(discoveries.sum()),
+        })
+
     m_test = len(test_idx)
     m_1 = int(test_labels.sum())
     trial_row = {
@@ -484,10 +512,13 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--detector", type=str, default="dominant_ours",
-                        help="Scorer to use; see src/detectors.py. 'dominant_ours' is "
-                             "the frozen path and reproduces published numbers "
-                             "byte-for-byte. PyGOD options use a CORRECT encoder.")
+    parser.add_argument("--detector", type=str, default="dominant_pygod",
+                        help="Scorer to use; see src/detectors.py. Defaults to "
+                             "'dominant_pygod', a CORRECT implementation. "
+                             "'dominant_ours' is the frozen path: it reproduces the "
+                             "published numbers byte-for-byte, but its encoder's final "
+                             "ReLU layer is dead (frac_zero=1.0), so it is kept ONLY "
+                             "for reproducing frozen results -- never for new ones.")
     parser.add_argument("--degree_norm", type=str, default="auto",
                         choices=["auto", "on", "off"],
                         help="'auto' reads DEGREE_NORM_BY_DATASET, measured for "
@@ -521,6 +552,18 @@ def main():
                        if _dn is None else _dn)
     print(f"Degree normalization: {'ON' if use_degree_norm else 'OFF'} "
           f"(dataset-specific default -- see DEGREE_NORM_BY_DATASET)\n")
+
+    # DEGREE_NORM_BY_DATASET was measured under dominant_ours. Since the default
+    # detector is no longer dominant_ours, 'auto' is now an inherited setting
+    # rather than a measured one for every other scorer -- exactly the mistake
+    # that made Yelp's entry wrong. Say so out loud instead of defaulting quietly.
+    if _dn is None and args.detector != "dominant_ours":
+        print(f"WARNING: --degree_norm auto resolved to "
+              f"{'ON' if use_degree_norm else 'OFF'} from a table measured under "
+              f"dominant_ours, but --detector is {args.detector}. This setting is "
+              f"INHERITED, not measured, for this detector. Run "
+              f"scripts/degree_norm_diagnostic.py to measure it, or pass "
+              f"--degree_norm on/off explicitly.\n")
 
     all_results = []
     all_ranks = []

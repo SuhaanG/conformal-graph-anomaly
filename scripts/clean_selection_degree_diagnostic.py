@@ -65,10 +65,11 @@ import networkx as nx
 from scipy import stats
 
 from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
-from detectors import score_nodes
+from detectors import score_nodes, available_detectors
 
 
-def run_trial(seed, n_epochs, device, calib_frac=0.9):
+def run_trial(seed, n_epochs, device, calib_frac=0.9,
+              detector="dominant_pygod"):
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
         feature_shift=1.0, n_anomaly_clusters=3, random_state=seed,
@@ -76,7 +77,7 @@ def run_trial(seed, n_epochs, device, calib_frac=0.9):
     gen = ContaminatedGraphGenerator(cfg)
     graph, features, labels = gen.generate()
 
-    scores = score_nodes("dominant_pygod", graph, features, labels=labels,
+    scores = score_nodes(detector, graph, features, labels=labels,
                           seed=seed, n_epochs=n_epochs, device=device)
 
     normal_idx = np.where(labels == 0)[0]
@@ -181,6 +182,14 @@ def main():
     parser.add_argument("--n_seeds", type=int, default=10)
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--detector", type=str, default="dominant_pygod",
+                        choices=available_detectors(),
+                        help="Which detector produces the scores. The degree "
+                             "findings recorded in this file's docstring "
+                             "(t=-24.959, Spearman r=0.56) are dominant_pygod "
+                             "numbers; other detectors are expected to differ, "
+                             "and how much they differ is exactly Part 4 "
+                             "prediction 2.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if __import__("torch").cuda.is_available() else "cpu")
@@ -192,7 +201,7 @@ def main():
 
     results = []
     for seed in range(args.n_seeds):
-        r = run_trial(seed, args.n_epochs, device)
+        r = run_trial(seed, args.n_epochs, device, detector=args.detector)
         if r is None:
             print(f"  seed {seed}: skipped (insufficient clean calibration pool)")
             continue

@@ -1,0 +1,57 @@
+--- ALL CELLS (headline) (n=20) ---
+    meanp   rho=-0.7293  p=0.0003
+    ks      rho=+0.8767  p=0.0000
+    gamma   rho=+0.9033  p=0.0000
+
+zero-discovery cells: 7 of 20
+
+--- DROP zero-discovery cells (n=13) ---
+    meanp   rho=-0.6044  p=0.0287
+    ks      rho=+0.7692  p=0.0021
+    gamma   rho=+0.8132  p=0.0007
+
+--- DROP dominant_pygod (n=16) ---
+    meanp   rho=-0.5471  p=0.0283
+    ks      rho=+0.8147  p=0.0001
+    gamma   rho=+0.8521  p=0.0000
+
+--- DROP both (n=9) ---
+    meanp   rho=-0.0167  p=0.9661
+    ks      rho=+0.5333  p=0.1392
+    gamma   rho=+0.6000  p=0.0876
+
+--- within-detector (n=4 datasets each) ---
+    anomalydae       rho=+0.8000 p=0.2000  disc=[0.0, 4.6, 0.0, 119.2]
+    dominant_ours    rho=+1.0000 p=0.0000  disc=[0.0, 5.8, 0.0, 118.6]
+    dominant_pygod   rho=+0.4000 p=0.6000  disc=[3446.4, 300.4, 2671.4, 50.6]
+    gae              rho=+1.0000 p=0.0000  disc=[0.0, 5.6, 0.0, 62.0]
+    ocgnn            rho=+0.8000 p=0.2000  disc=[168.2, 2.6, 0.0, 15.6]
+
+--- within-dataset (n=5 detectors each) ---
+    amazon       rho=+0.9000 p=0.0374
+    reddit       rho=+0.7000 p=0.1881
+    tolokers     rho=+1.0000 p=0.0000
+    weibo        rho=+0.1000 p=0.8729
+
+CELL TABLE
+ dataset       detector      sdeg    gamma       ks    meanp   disc      fdr
+  amazon     anomalydae -0.153023 1.000000 0.000000 0.665102    0.0 0.000000
+  amazon  dominant_ours  0.003999 1.107914 0.050681 0.490608    0.0 0.000000
+  amazon dominant_pygod  0.918238 3.290553 0.600353 0.136417 3446.4 0.901162
+  amazon            gae -0.025162 1.204279 0.078097 0.466968    0.0 0.000000
+  amazon          ocgnn  0.439145 1.236756 0.120073 0.626491  168.2 0.179310
+  reddit     anomalydae  0.329037 1.265402 0.177837 0.432371    4.6 0.147143
+  reddit  dominant_ours  0.134557 1.341511 0.184494 0.413099    5.8 0.000000
+  reddit dominant_pygod  0.606372 3.619519 0.668937 0.090573  300.4 0.912802
+  reddit            gae  0.401490 1.669829 0.240573 0.339774    5.6 0.090476
+  reddit          ocgnn  0.166332 1.073851 0.057269 0.547172    2.6 0.107692
+tolokers     anomalydae -0.219344 1.000148 0.000269 0.616472    0.0 0.000000
+tolokers  dominant_ours -0.234240 1.000000 0.002562 0.602302    0.0 0.000000
+tolokers dominant_pygod  0.898923 2.901299 0.499401 0.185229 2671.4 0.634831
+tolokers            gae -0.172417 1.015696 0.027792 0.550561    0.0 0.000000
+tolokers          ocgnn  0.367252 1.926099 0.313859 0.349634    0.0 0.000000
+   weibo     anomalydae -0.126242 1.119126 0.068475 0.510114  119.2 0.647647
+   weibo  dominant_ours -0.124991 1.069941 0.067066 0.518564  118.6 0.649252
+   weibo dominant_pygod  0.446955 1.286215 0.102887 0.474485   50.6 0.624621
+   weibo            gae -0.092812 1.019839 0.056179 0.522218   62.0 0.612903
+   weibo          ocgnn -0.120180 1.006979 0.006653 0.569640   15.6 0.041026

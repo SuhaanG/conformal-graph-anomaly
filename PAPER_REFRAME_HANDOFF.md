@@ -36,16 +36,320 @@ plus two methodological pitfalls (section 6). See section 7 for the rewrite.
 
 ## 2. Status in one page
 
+**The project changed direction on 2026-08-20. Read section 2A before anything
+else -- the premise the paper is named after turned out not to be what any
+experiment in this repo was measuring.**
+
 | | Status |
 |---|---|
-| Contamination-robustness claim | **DEAD.** Disproven on 5 real datasets, under a correct detector at AUROC 1.00, and across 5 detectors spanning 3 families (section 4.10) |
-| "Fails into silence" claim | **SUSPECT.** Probably an artifact of a broken detector. Re-test or drop |
-| Discovery-threshold proposition | **NEEDS RESTATING.** Valid as a *sufficient* condition; the bidirectional reading behind the old "15/15" is falsified (section 5.5) |
-| Methodological pitfalls | **REAL.** Two of them, both reproducible |
-| All real-data FDR numbers | **VALID** as measured, but produced by a detector whose graph pathway is inert |
-| Synthetic study | **COMPROMISED.** Detector broken; generator trivially easy for a working one |
-| Current paper draft | **NOT SUBMITTABLE.** Contains factual errors, see section 6.4 |
-| Venue | arXiv now; then a workshop or COPA. Not IEEE at current scope (section 8) |
+| Contamination-robustness claim | **DEAD, and it was never tested.** No condition in the codebase ever put an anomaly in calibration (2A.1) |
+| **Calibration SELECTION breaks FDR control** | **CONFIRMED on real data, causally, at matched frames.** gamma 13.22 vs 0.82 on amazon (2A.2). This is the paper |
+| **The score-gap law** | **CONFIRMED.** Spearman(gap, gamma) = -0.73, p=9.1e-04 over 17 cells, predicts sign and magnitude (2A.3) |
+| **True contamination is HARMLESS** | **CONFIRMED.** 5% and 10% real anomalies in calibration stay exchangeable (2A.2) |
+| **Benchmark AUROC largely measures degree** | **CONFIRMED. 16 of 20 cells cannot beat a degree lookup** (2A.4) |
+| **The mechanism is CONDITIONAL on the detector** | **CONFIRMED by controlled experiment** (2A.4b). Same filter, same 7x degree gap, gamma 13.22 for pygod vs 0.76 for gae |
+| **A working configuration exists** | **YES.** gae + unfiltered calibration on amazon: FDR 0.059, 101 discoveries, power 0.116 (2A.4b) |
+| Discovery-threshold proposition (Part 1) | **VALID** as a sufficient condition, and it explains why true contamination is safe |
+| Part 4 degree-tilt theorem | **SUPERSEDED** by Part 7. Degree was one channel, not the mechanism |
+| Detector power under valid calibration | **DEPENDS ON THE DETECTOR.** 0 for pygod on amazon; 101 (power 0.116, FDR 0.059) for gae (2A.4b) |
+| Synthetic study | **VACUOUS.** AUROC 1.0 is a degree artifact of p_aa=0.3 (2A.4) |
+| Current paper draft | **NOT SUBMITTABLE.** Wrong premise plus the factual errors in 6.4 |
+| Venue | AISTATS (Oct deadline) as the real attempt, TNSE as the fallback. NeurIPS D&B deadline is ~May 2027, too far. Section 8 |
+
+---
+
+## 2A. What happened on 2026-08-20 (READ FIRST)
+
+Four findings, in dependency order. Everything is in
+`theory/joint_discovery_threshold_proposition.md` Parts 6 and 7 with full
+numbers; this is the orientation.
+
+### 2A.1 The project never studied calibration contamination
+
+Every condition in `real_data_experiment.py` draws calibration from
+`eligible_normal_idx`, a subset of `normal_idx = np.where(labels == 0)`:
+
+    clean         calib_idx = clean_pool                       (labels == 0)
+    contaminated  calib_idx = rng.choice(eligible_normal_idx)  (labels == 0)
+    adversarial   calib_idx = top_exposed[:n_calib]            (labels == 0)
+
+**No anomaly has ever entered a calibration set in this repo.** In Bates et al.
+2023 and AdaDetect, "contaminated calibration" means the reference sample
+CONTAINS OUTLIERS. That experiment had never been run.
+
+What the three conditions actually vary is which NORMALS are selected, by
+exposure (fraction of anomalous neighbours): clean is exposure==0,
+contaminated is population-rate, adversarial is maximal. It is a
+covariate-selection experiment wearing a contamination label.
+
+This retroactively explains section 4: the exposure->score channel we spent
+weeks measuring (|r| < 0.03 on four datasets) is a second-order message-passing
+effect. There was no contamination to detect because none was ever injected.
+
+### 2A.2 The real finding: the selection RULE breaks exchangeability
+
+Under the clean condition, calibration = {normal : exposure == 0} and
+test-normals = its complement. **They are disjoint in exposure by
+construction.** Conformal validity requires S|calib ==d S|test, so if the score
+responds to exposure or to anything correlated with it, validity fails by
+design.
+
+`scripts/calibration_strategy_comparison.py` tests this by varying ONLY the
+selection rule -- same test set, same n_calib, same p-value floor, invariants
+asserted at runtime. Amazon, dominant_pygod, 5 seeds:
+
+    strategy         calib_deg  test_deg   gap(d)   gamma   mean_p   disc    fdr
+    clean                105.6     737.2   -1.252   13.22   0.1438   1527  0.787
+    random               761.4     737.2   -0.005    0.82   0.5007      0  0.000
+    exposed_only         728.1     737.2   +0.013    1.01   0.5067      0  0.000
+    true_contam_05       727.2     737.2   -0.010    0.72   0.4976      0  0.000
+    true_contam_10       732.2     737.2   +0.023    0.75   0.5077      0  0.000
+    random_full (n=4000) 742.5     737.2   +0.002    1.16   0.5003      0  0.000
+
+**The clean filter selects calibration at 1/7th the test population's degree.**
+Every other rule -- including calibration containing 10% ACTUAL ANOMALIES --
+lands within 2% of the test set and is exchangeable. gamma is computed from
+null p-values, so this does not depend on discovery counts.
+
+The quotable form: *clean calibration is valid only if the score is insensitive
+to exposure, which is exactly when contamination was never a threat. The
+strategy is valid when it is unnecessary and invalid when it is needed.*
+
+**A prediction we got wrong, informatively.** `exposed_only` is NOT broken
+(gamma 1.01). Filtering per se does not hurt; filtering that SHIFTS a
+score-relevant covariate does. On amazon nearly every high-degree node has an
+anomalous neighbour, so "exposed" is almost the whole population while
+"unexposed" is the low-degree fringe.
+
+### 2A.3 The score-gap law, and why it is deployable
+
+Across every matched-frame cell so far -- 3 datasets, 2 detectors, 6 selection
+rules, 17 cells -- the standardized score gap between calibration and
+test-normals predicts the violation, including its SIGN:
+
+    Spearman(gap_d, gamma) = -0.7285,  p = 9.11e-04
+
+    amazon  clean         gap -1.252  (calib 7x LOWER degree)   gamma 13.22
+    weibo   clean         gap -0.078                            gamma  1.42
+    reddit  gae clean     gap -0.065                            gamma  1.04
+    ...     matched rules |gap| < 0.05                          gamma ~1
+    weibo   exposed_only  gap +0.145  (calib HIGHER degree)     gamma  0.23
+    reddit  exposed_only  gap +0.435  (calib 5x HIGHER degree)  gamma  0.31
+
+Calibration scoring lower than test -> anti-conservative. Higher ->
+conservative. Matched -> valid. Degree and exposure are both merely routes to a
+gap; neither is privileged. **This supersedes Part 4's degree-specific
+theorem.**
+
+**Be honest about what is and is not a contribution.** gap_d and gamma are both
+functions of the same two score distributions, so "shifted scores produce
+shifted p-values" is near definitional and a referee will say so. The
+contributions are:
+
+  1. the selection rule causes a gap of unguessable magnitude (7x degree gap
+     from a rule that sounds prudent);
+  2. true contamination does NOT cause one;
+  3. **the gap is computable WITHOUT LABELS** -- a two-sample statistic on
+     scores you already have at deployment. That makes it an operational
+     precondition check, not a post-hoc diagnosis, and it is the practical
+     payload the paper should lead with.
+
+### 2A.4 Benchmark AUROC may be measuring node degree
+
+The strongest and least expected finding, and the one that could reach Tier 1.
+
+Sweeping anomaly-anomaly edge density with FEATURES HELD IDENTICAL
+(`scripts/synthetic_difficulty_sweep.py`):
+
+    p_aa     E[deg|anom]  E[deg|norm]  ratio   detector AUROC   degree-only AUROC
+    0.005       32.2         72.8      0.44       0.0793            0.0330
+    0.010       36.0         72.8      0.49       0.1038              --
+    0.020       43.5         72.8      0.60       0.0661              --
+    0.050       66.0         72.8      0.91       0.3337            0.3690
+    0.100      103.5         72.8      1.42       0.8597            0.8192
+    0.300      253.5         72.8      3.48       1.0000            1.0000
+
+AUROC crosses 0.5 exactly where the anomaly/normal degree ratio crosses 1.0,
+and **an untrained degree lookup reproduces the trained detector's curve.**
+dominant_pygod's score-degree Spearman is +0.918 on amazon. The AUROC 1.0000
+that every synthetic result in this project rests on is not detection -- it is
+degree ranking coinciding with the planted block structure. Flip p_aa and the
+same detector on the same features scores 0.066.
+
+**RESOLVED. `degree_baseline_check.py` ran: 16 of 20 detector-dataset cells
+fail to beat an untrained degree lookup by more than 0.02 AUROC.**
+
+    dataset    best free baseline         best detector           gap
+    amazon     0.7446 (neg_degree)        0.8589 (gae)          +0.1143
+    reddit     0.5561 (degree)            0.5769 (dominant_ours) +0.0207
+    tolokers   0.5596 (degree)            0.5618 (ocgnn)        +0.0022
+    weibo      0.7782 (neg_degree)        0.7733 (dominant_ours) -0.0049
+
+On tolokers and weibo NO detector clears the bar. The claim "benchmark AUROC in
+graph anomaly detection substantially measures node degree" is now supported by
+measurement, not conjecture. Full table in theory doc Part 8.
+
+Note what it also revealed: dominant_pygod -- the detector behind every Part
+6/7 result -- itself LOSES to the baseline on 3 of 4 datasets (amazon 0.383 vs
+0.745). That raised an obvious referee question, which 2A.4b answers.
+
+### 2A.4b The controlled experiment: the mechanism is REAL and CONDITIONAL
+
+Running the strategy comparison on amazon with `gae` instead of
+`dominant_pygod` isolates the mechanism, because the two detectors have
+opposite degree profiles on an otherwise identical setup:
+
+                            dominant_pygod        gae      ratio
+        calib_deg                  105.6        106.3       1.0x
+        test_deg                   737.2        771.3       1.0x
+        degree ratio               0.143        0.138       1.0x
+        sdeg (score~degree)       +0.902       -0.026      34.7x
+        gap_d (score gap)         -1.252       -0.038      32.9x
+        gamma                      13.22         0.76      17.4x
+
+**The clean filter produces the SAME 7x degree gap for both.** That part is a
+property of the graph and the rule. Whether it becomes a validity failure
+depends entirely on whether the score responds to degree -- it does for pygod
+(broken), it does not for gae (valid).
+
+This is the causal chain demonstrated with the covariate shift HELD FIXED and
+only the score's sensitivity varying. It does not weaken the selection-bias
+finding; it completes it, and it pre-empts the referee objection rather than
+leaving it open.
+
+The correct statement of the claim is therefore: **calibration filtering is
+CONDITIONALLY dangerous, and the condition is measurable.** That conditionality
+is why the label-free score-gap diagnostic (2A.3) is the paper's deliverable --
+you cannot tell from the filter alone whether you are in trouble.
+
+**And it gives the project its first working configuration:**
+
+    gae + random_full on amazon:
+        n_calib=4000   gamma=0.96   disc=101   FDR=0.059   power=0.116
+
+Valid (FDR below the nominal 0.10), useful (11.6% of the 821 anomalies), with a
+detector that beats the degree baseline by +0.114 AUROC. Every earlier
+configuration was either broken (pygod/clean, FDR 0.787) or found nothing. This
+is the existence proof that keeps the paper from being purely cautionary.
+
+### 2A.5 The uncomfortable result -- NOW PARTLY RESOLVED, see 2A.4b
+
+> This section was written before the gae run. Its conclusion holds for
+> dominant_pygod but NOT in general: gae under valid calibration achieves 101
+> discoveries at FDR 0.059 on amazon. Read 2A.4b. What survives is that a
+> degree-proxy detector has no real power once its validity failure is removed.
+
+Under a VALID calibration rule, dominant_pygod finds almost nothing:
+
+  - amazon, `random_full` at n_calib=4000 (bh_min_rank ~7, so only 7 test
+    points need to beat the whole calibration set): **0 discoveries**
+  - reddit, gae, `random_full`: **3 discoveries**, FDR 0.132, power 0.005
+
+So clean's 1527 amazon "discoveries" at FDR 0.787 (~325 true, ~1202 false) were
+manufactured by the validity failure. The degree gap let nearly every test node
+outrank the low-degree calibration set, BH fired en masse, and the true hits
+were along for the ride.
+
+**Power without validity was an illusion of the broken guarantee.** The paper's
+claim must be about VALIDITY, not detection performance. That is defensible for
+a conformal paper -- validity is the product -- but do not oversell power.
+
+### 2A.6 New scripts, and what each is for
+
+    scripts/calibration_strategy_comparison.py
+        THE central experiment. Varies only the calibration selection rule at
+        matched n_calib / test set / floor. Six strategies including
+        true_contam_05/10 (real anomalies injected) and random_full (unmatched
+        n, the deployment-realistic arm). Runtime frame-invariant assertions.
+
+    scripts/degree_baseline_check.py
+        Trained detectors vs an untrained degree lookup. The Tier-1 decider.
+
+    scripts/synthetic_difficulty_sweep.py
+        Sweeps p_aa (NOT feature_shift -- see below) to find a non-trivial
+        detection regime, with a matched clean-vs-random comparison per level.
+
+    scripts/degree_sensitivity_sweep.py
+        Manipulates score-degree dependence directly via score/log1p(deg)**beta
+        on a fixed frame. Superseded as a mechanism test by the strategy
+        comparison, but its beta curve is still the cleanest demonstration that
+        no score-level degree correction can fix the problem.
+
+    src/selection_bias.py
+        gamma estimator, simulated exchangeable null, adaptive t grid,
+        score-degree dependence, empirical q(d). 13 tests in
+        tests/test_selection_bias.py.
+
+### 2A.7 Traps in this codebase, learned the hard way
+
+**Six measurement errors produced confident wrong verdicts today.** Every one
+was caught by testing the statistic against a case with a known answer. Do this
+before believing anything this codebase prints, including code written after
+these fixes.
+
+  1. **Zero-discovery cells contaminating averages.** BH scores a
+     zero-discovery trial as FDR=0. This has now faked a positive result FIVE
+     separate times: degree normalization (6.3), the beta sweep, the strategy
+     comparison verdict, the difficulty sweep, and the original Method B/C.
+     **Never average an FDR over cells with no discoveries.**
+  2. **gamma measured where BH does not operate.** `min_rank = n_calib//4` put
+     the measurement 112x further into the bulk than BH's actual threshold on
+     weibo. Use `left_tail_gamma` with `adaptive_t_grid`.
+  3. **A fixed t that the calibration size cannot resolve.** At n_calib=267,
+     t=0.01 covers calibration ranks 1-2 and collapses to 0.00.
+  4. **Correlating two monotone functions of a swept parameter.**
+     Spearman(beta, sdeg) = -1.0000 by construction, so anything monotone in
+     beta correlates with sdeg. That produced a bogus "SUPPORTS" verdict.
+  5. **argsort-based AUROC with tied scores.** Returns 1.0 on all-tied input.
+     Degree is heavily tied, so this would have corrupted 2A.4 specifically.
+     Fixed in `degree_baseline_check.py` via scipy `rankdata`;
+     `synthetic_difficulty_sweep.py` and `severity_sweep_pygod_instrumented.py`
+     still carry the old version and should be updated.
+  6. **Citing a number without checking its provenance.** The weibo
+     exposure->score r=0.111 quoted repeatedly was measured on
+     DEGREE-NORMALIZED scores; raw is 0.045, and the strategy run measures
+     +0.016. A story was built on it before anyone checked.
+
+### 2A.8 What to run next, in priority order
+
+    DONE  degree_baseline_check.py           -> 16/20 cells lose to degree (2A.4)
+    DONE  strategy comparison, amazon + gae  -> mechanism is conditional (2A.4b)
+
+    DONE  strategy comparison, tolokers + gae -> conditionality REPLICATES
+
+          tolokers' clean filter is even harsher than amazon's -- a 13x degree
+          gap (calib 5.7 vs test 73.8) against amazon's 7x -- yet with gae
+          (sdeg -0.172) the score gap stays at +0.052 and gamma stays valid at
+          0.28, with random at 0.99. On the SAME graph dominant_pygod
+          (sdeg +0.909) gives gamma@BH 9.61 and FDR 0.635. Two graphs, same
+          pattern: the covariate gap is a property of the filter, the validity
+          failure is a property of the detector.
+
+          Sign check passes again: sdeg NEGATIVE with low-degree calibration
+          means calibration scores slightly HIGHER, predicting conservative --
+          and gamma is 0.28.
+
+          HONEST LIMIT: gae on tolokers finds NOTHING even at n_calib=4000. The
+          validity result replicates; the usability result does not. amazon
+          remains the only graph with a configuration that is both valid and
+          useful.
+
+    1. Same run on weibo (--dataset weibo --detector gae). Third graph.
+
+    2. Widen the score-gap law past 17 cells -- anomalydae and ocgnn on the
+       datasets already run. It is the paper's central quantitative claim.
+
+    3. Fix the argsort AUROC in synthetic_difficulty_sweep.py and
+       severity_sweep_pygod_instrumented.py (2A.7 item 5). Ties are mishandled.
+
+    4. Copy every CSV into results/published/ with an index row.
+
+    5. WRITE. The draft is the bottleneck. Section 7's rewrite plan predates
+       2A entirely and needs redoing.
+
+**Do not** add more detectors or datasets hoping for a better headline. The
+empirical breadth already exceeds most GAD papers. What is missing is writing,
+and a faculty collaborator (section 8.8).
 
 ---
 
@@ -75,6 +379,15 @@ plus two methodological pitfalls (section 6). See section 7 for the rewrite.
 ---
 
 ## 4. Why the contamination claim is dead
+
+> **SUPERSEDED BY 2A.1, and read that first.** This section is still accurate
+> as a record of what was measured, but the conclusion is now understood
+> differently. We spent weeks measuring an exposure->score channel and finding
+> it near zero. The reason is not that contamination is harmless in general --
+> it is that **no anomaly was ever placed in a calibration set**, so there was
+> no contamination present to have an effect. The conditions differ in which
+> NORMALS they select, not in contamination. Keep the measurements; discard the
+> framing.
 
 ### 4.1 The measurement that matters
 
@@ -287,6 +600,14 @@ on the actual pipeline, and treat synthetic as illustrative with caveats stated.
 ---
 
 ## 5. The positive result: the discovery-threshold proposition
+
+> **STILL VALID, and it gained a second use.** Beyond predicting when discovery
+> is possible, the floor condition explains why TRUE contamination is safe
+> (2A.2): injecting anomalies into calibration puts them at the top of the
+> calibration scores, which raises the minimum achievable p-value to
+> (eps*n+1)/(n+1) and pushes bh_min_rank beyond what any test set can supply.
+> True contamination is safe *because Part 1 blocks it*. That ties the two
+> halves of the theory document together.
 
 Source: `theory/joint_discovery_threshold_proposition.md` (Gopal's).
 
@@ -575,64 +896,164 @@ Graphs? A Joint Condition on Base Rate, Calibration Size, and Detector Quality*
 
 ## 8. Venue
 
-**Not IEEE at current scope.** The objection that caps us is not evidence, it is
-depth: the proposition is a few lines of algebra combining the p-value floor with
-the BH rule. Correct, useful, well-validated -- and a reviewer will still call it
-an observation rather than a theorem. More validation cells improve evidence
-without making the result deeper.
+**Rewritten 2026-08-20. Earlier versions of this section said IEEE was out,
+then said TAI, then TNSE. Those were all written before section 2A. The honest
+current read is below, and it is CONDITIONAL on one experiment.**
 
-Both routes to TKDE are closed:
-- *"A widely-used detector is silently broken"* -- closed, PyGOD is correct (4.7)
-- *"Contamination is real and we characterize it"* -- closed, null holds under a
-  correct detector (4.7)
+### 8.1 The degree check ran; the venue picture is now settled enough to act
 
-**Ranked recommendation:**
+Both gating experiments are done (2A.4, 2A.4b). Current honest read:
 
-1. **arXiv, immediately.** Free, citable, blocks nothing.
-2. **NeurIPS Datasets & Benchmarks Track.** Best fit for the pitfalls framing;
-   ~25-30% acceptance; CV line reads "NeurIPS". Precedent: `tang2023gadbench`
-   in our own bibliography was published there.
-3. **AISTATS / UAI.** Right audience for the statistical core -- they will
-   actually engage with the p-value floor argument, PRDS testing, and the e-BH
-   appendix. ~10-20% for this paper.
-4. **COPA** (Symposium on Conformal and Probabilistic Prediction). Best topical
-   fit; `clarkson2024contamination` in our bib was published there. PMLR
-   proceedings, no fee. **COPA 2026 closed (papers May 20, posters Aug 1);
-   COPA 2027 ~May 2027.**
-5. **SDM** -- where DOMINANT itself was published. ~20-25%.
-6. IEEE TNSE / TAI / TETCI / TCSS -- ~20-30% each after the rewrite. TNSE has the
-   best scope fit of the IEEE options.
+| venue | deadline | fit | estimate |
+|---|---|---|---|
+| **AISTATS** | ~Oct, for May conf | Best. Statistics-first, values a rigorous exchangeability argument and a clean conditional result | **~20%** |
+| **IEEE TNSE** | rolling | Very good. Graph/network science, and 2A.4b gives it the "here is when it works" section it was missing | **~55-65%** |
+| TMLR | rolling | Good. Reviews correctness over novelty; would likely take this with revisions | ~60% |
+| KDD | ~Feb | Good scope, but wants the remedy to be strong | ~10-15% |
+| UAI | ~Feb | Similar to AISTATS, slightly lower prestige. Pick one, not both | ~15-20% |
+| COPA 2027 | ~May 2027 | Best topical fit, lowest name recognition | ~40% |
+| NeurIPS D&B | **~May 2027** | Would fit 2A.4 well, but the timing is dead for this cycle | n/a |
 
-Note that in CS, conferences generally outrank mid-tier journals, so options 2-5
-are *both* more prestigious and better-fitting than the IEEE journals.
+**NeurIPS D&B is off the table on timing, not merit.** The degree-baseline
+result (2A.4) would have suited it, but the next deadline is roughly nine
+months out and that conflicts with everything else on the timeline.
 
-### What would actually reach IEEE Transactions level
+**Recommended: submit to AISTATS in October as the real attempt, with TNSE as
+the fallback.** An AISTATS rejection still returns reviews that improve the
+TNSE version, so the sequence costs little. TMLR is the no-deadline safety net
+if timing pressure returns.
 
-See section 9.2. Short version: multiple detectors, a formalized theorem, and
-re-running everything under a correct detector. Months, not weeks.
+### 8.2 What changed the estimate upward
+
+Before 2A.4b the paper was a cautionary null: "this fails, and fixing it
+reveals the method never worked." That is publishable but weak.
+
+After 2A.4b it is a conditional result with an existence proof: the mechanism
+is real, the condition is measurable without labels, and there is a
+configuration that is both valid and useful (gae + unfiltered calibration,
+FDR 0.059 at power 0.116). "Here is when it breaks, here is how to check, here
+is a setting that works" is a substantially stronger paper than "here is when
+it breaks."
+
+### 8.3 What would move it further, in order of value
+
+  1. **A faculty co-author.** Fixes the arXiv endorsement, improves the paper,
+     and changes how referees read a submission from unaffiliated students.
+     Worth more than any remaining experiment.
+  2. **Replication of 2A.4b on tolokers and weibo.** One run each. The
+     conditional claim rests on one dataset today.
+  3. **Writing.** The bottleneck, and it has been for weeks.
+
+### 8.4 What is off the table, and why
+
+  - **NeurIPS / ICML / ICLR main track**: no novel method, no proven theorem.
+    Under 5%. The Part 4 theorem was superseded by Part 7, and Part 7's core
+    link is near definitional (2A.3).
+  - **TPAMI**: same reason, higher bar.
+  - **TKDE**: ~15-20%. It wants a method. Ruled out earlier in this project for
+    exactly this reason and nothing since has changed it.
+  - **IEEE Access / MDPI**: would accept, but committees know the bar is low.
+    Not worth it given the work is genuinely better than that tier.
+
+### 8.5 Framing for an ML-for-Science application
+
+Frame this as **reliability of AI-driven discovery**, not as graph anomaly
+detection. FDR control IS the false-discovery problem in scientific screening --
+the same statistical machinery used in genomics and drug screening. "Can we
+trust the discoveries an AI pipeline reports?" is a first-class SciML question,
+and the answer here -- *not unless you check the calibration gap, and here is
+the label-free check* -- is directly usable by other people.
+
+That framing makes both NeurIPS D&B and TNSE read as on-topic for a SciML MS,
+rather than as a methods detour.
+
+### 8.6 COPA, still the best topical fit
+
+The Symposium on Conformal and Probabilistic Prediction remains where the
+conformal-prediction community actually reads.
+`clarkson2024contamination`, in our bibliography, was published there.
+Proceedings to PMLR, no publication fee. These are the only reviewers who will
+engage seriously with the exchangeability argument rather than skim it.
+**COPA 2026 has closed; 2027 is around May.**
+
+### 8.7 The arXiv blocker, unchanged
+
+We do not have arXiv endorsement, and cs.LG requires it for authors without
+prior submissions in the category. Two routes, neither instant: get endorsed
+(most naturally via a UIUC faculty member, who would also improve the paper and
+change how reviewers read a submission from unaffiliated students), or get
+accepted somewhere first. Until then the GitHub repo is the citable artifact --
+it is public, has full history, and everything in this document reproduces from
+it.
+
+### 8.8 Honest overall assessment
+
+The work is genuinely good and it is not the work we set out to do. What exists
+now is: a documented failure mode in a procedure people rely on, a quantitative
+law with sign prediction, a label-free diagnostic anyone can run, a
+counterintuitive negative control, and a serious question about whether a whole
+benchmark measures what it claims.
+
+What does NOT exist: a method, a proven theorem, or a demonstration that any of
+these detectors usefully work. Power under valid calibration is near zero
+(2A.5), and no amount of writing will hide that from a referee. The paper must
+claim validity, not performance.
+
+Two structural handicaps worth stating plainly: no faculty co-author, and no
+arXiv presence. Both are fixable and both matter more than one more experiment.
+Getting a UIUC faculty member involved would do more for the outcome than
+anything else on the next-steps list.
 
 ---
 
 ## 9. What to do next
 
-### 9.1 Immediate (this week)
+### 9.1 Immediate -- for Gopal
 
-- [ ] Do the rewrite (section 7). Experiments are done; numbers do not change.
-- [ ] Fix all factual errors in 6.4 -- these are not optional.
-- [ ] Post to arXiv.
-- [ ] Paste Yelp's measured raw vs degree_norm AUROCs into the TODO comment in
-      `DEGREE_NORM_BY_DATASET` (`scripts/real_data_experiment.py`), matching the
-      style of the weibo entry.
-- [ ] Confirm `m` values in the 15/15 table against `m_test` in the CSV.
-- [ ] Update `theory/joint_discovery_threshold_proposition.md` per 5.4.
-- [ ] Measure `exposure~degree` on Weibo -- the last loose end. Weibo is the only
-      dataset where the calibration distribution moves monotonically with
-      exposure (q95 342->364->399, clear_anom 0.0173->0.0163->0.0144), and the
-      degree explanation does not obviously fit its direction.
-      `exposure_degree_confound_check.py --datasets weibo`
-- [ ] **Re-test or drop "fails into silence"** (4.8).
+**Read section 2A first. The premise changed.** The paper is no longer about
+contamination; it is about calibration SELECTION. Sections 4 and 5 are still
+accurate as records but carry superseded framing, and both now have pointers
+saying so.
+
+In priority order:
+
+- [ ] **Run `degree_baseline_check.py`** (~15 min). This single run decides the
+      venue, because it decides whether the Tier-1 framing in 8.2 exists. Do it
+      before anything else.
+
+      python scripts/degree_baseline_check.py --n_seeds 3 --device cuda
+
+- [ ] **Run the strategy comparison with `ocgnn`** on reddit and weibo. It is
+      the only detector that both discovers and controls FDR on two datasets
+      (weibo 15.6 discoveries at FDR 0.041; reddit 2.6 at 0.108). If random
+      calibration improves on clean for it, that is the demonstrated remedy the
+      paper currently lacks.
+
+- [ ] **Widen the score-gap law past 17 cells** -- tolokers, plus anomalydae
+      and gae on the datasets already run. The law is the paper's central
+      quantitative claim and 17 cells is thin.
+
+- [ ] **Fix the argsort AUROC** in `synthetic_difficulty_sweep.py` and
+      `severity_sweep_pygod_instrumented.py` (2A.7 item 5). It mishandles ties.
+
+- [ ] **Copy every CSV into `results/published/`** with an index row. Several
+      numbers cited in this document still have no committed file behind them.
+
+- [ ] **Start writing.** The draft is the bottleneck, not the experiments. It
+      still contains the factual errors in 6.4 AND now a premise we know is
+      wrong. Section 7's rewrite plan needs redoing against 2A.
+
+**Do not** run more detectors or datasets hoping for a better result. The
+empirical breadth already exceeds most GAD papers. What is missing is writing
+and, more than any experiment, a faculty collaborator (8.8).
 
 ### 9.2 To reach IEEE Transactions level (months)
+
+> **PARTLY OBSOLETE.** Items 1 and 2 are done. Item 3 (formalise the
+> proposition into a theorem) was attempted as Part 4 and superseded by Part 7,
+> whose central link is near definitional -- so "write the theorem" is no
+> longer the path to a better venue. See section 8, which is rewritten.
+
 
 Ranked by impact:
 
