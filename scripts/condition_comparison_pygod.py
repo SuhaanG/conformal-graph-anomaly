@@ -72,6 +72,11 @@ from graph_gen import GraphGenConfig, ContaminatedGraphGenerator
 from detectors import score_nodes, available_detectors
 from conformal_fdr import conformal_p_values, benjamini_hochberg
 from real_data_experiment import degree_normalize_scores
+from weighted_conformal import (
+    weighted_conformal_p_values,
+    estimate_selection_propensity,
+    calibration_weights_from_propensity,
+)
 
 CONDITIONS = ["clean", "contaminated", "adversarial"]
 
@@ -191,6 +196,7 @@ def rank_grid(n_calib: int, n_points: int = 25) -> np.ndarray:
 def run_condition_trial(condition, alpha, seed, n_epochs, device,
                          calib_frac=0.9, n_rank_points=25, use_degree_norm=False,
                          degree_matched_calib=False, n_degree_bins=10,
+                         use_weighted_conformal=False,
                          detector="dominant_pygod"):
     """Structurally identical to conformal_fdr.run_single_trial, with the
     single substitution of a src/detectors.py scorer for the frozen
@@ -204,22 +210,41 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
     fixed. See theory/joint_discovery_threshold_proposition.md Part 4,
     prediction 2.
 
-    use_degree_norm=False by default, matching the run that found the
-    clean-condition FDR inflation (mean 0.132, d=0.837, p=0.0007). Tested
-    True in a prior run: it collapsed AUROC from 1.0 to ~0.90 and power
-    from 1.0 to ~0.002, and made conditional FDR on the rare trials that
-    still fired WORSE (40-44%, not better) -- too blunt an instrument,
-    kept here only for reproducibility of that comparison, not recommended.
+    Three independent fixes for the clean condition, all off by default and
+    mutually exclusive in practice (only one should be True at a time --
+    combining them is not tested and not meaningful):
 
-    degree_matched_calib=False by default. When True, replaces the
-    "clean" condition's uniform draw from the zero-exposure pool with
-    degree_matched_calib_sample() (see above), addressing the selection
-    bias directly instead of rescaling scores. Only affects "clean" --
-    "contaminated" already draws uniformly from the full normal pool
-    (not a topologically filtered subset, so no equivalent bias to
-    correct), and "adversarial" is a deliberate worst-case selection,
-    not a candidate for degree-matching."""
+    use_degree_norm=False. Tested True in a prior run: it collapsed AUROC
+    from 1.0 to ~0.90 and power from 1.0 to ~0.002, and made conditional
+    FDR on the rare trials that still fired WORSE (40-44%, not better) --
+    too blunt an instrument, kept here only for reproducibility.
+
+    degree_matched_calib=False. Replaces the "clean" condition's uniform
+    draw with degree_matched_calib_sample(). Tested True in a prior run:
+    closed about half the gap (d: 0.837 -> 0.449), capped by the candidate
+    pool structurally lacking high-degree members (see theory doc Part 4's
+    corollary on why this ceiling is provable, not just observed).
+
+    use_weighted_conformal=False. Applies src/weighted_conformal.py's
+    inverse-propensity weighting to the SAME "clean" calibration draw
+    uniform sampling would produce -- the third fix, and the one the
+    theory doc's Theorem (selection-induced non-exchangeability) actually
+    predicts should work, as opposed to the other two which were
+    engineering attempts to work around it. Not yet tested against this
+    synthetic setup; weighted_conformal.py's own self-test validates the
+    mechanism on an idealized simulation, and calibration_strategy_
+    comparison.py's "weighted" strategy tests it on real data -- this is
+    the third and last place it needs to be checked.
+
+    Only "clean" is affected by any of the three -- "contaminated" already
+    draws uniformly from the full normal pool (no selection bias to
+    correct), and "adversarial" is a deliberate worst-case selection, not
+    a candidate for any of these fixes."""
     assert condition in CONDITIONS
+    assert sum([use_degree_norm, degree_matched_calib, use_weighted_conformal]) <= 1, (
+        "at most one of use_degree_norm, degree_matched_calib, "
+        "use_weighted_conformal should be set -- combining them is untested"
+    )
 
     cfg = GraphGenConfig(
         n_nodes=15000, p_aa=0.3, p_an=0.002, p_nn=0.005,
@@ -282,7 +307,15 @@ def run_condition_trial(condition, alpha, seed, n_epochs, device,
     calib_scores = scores[calib_idx]
     test_scores = scores[test_idx]
 
-    p_values = conformal_p_values(calib_scores, test_scores)
+    if use_weighted_conformal and condition == "clean":
+        q_hat_pool = estimate_selection_propensity(degree, clean_mask, n_bins=n_degree_bins)
+        pool_pos = {int(idx): pos for pos, idx in enumerate(normal_idx)}
+        q_hat_calib = np.array([q_hat_pool[pool_pos[int(i)]] for i in calib_idx])
+        calib_weights = calibration_weights_from_propensity(q_hat_calib)
+        p_values = weighted_conformal_p_values(calib_scores, calib_weights,
+                                                test_scores, test_weight=1.0)
+    else:
+        p_values = conformal_p_values(calib_scores, test_scores)
     discoveries = benjamini_hochberg(p_values, alpha)
 
     n_discoveries = int(discoveries.sum())
@@ -371,7 +404,14 @@ def main():
                               "structurally biased low. Does not touch scores, unlike "
                               "--use_degree_norm.")
     parser.add_argument("--n_degree_bins", type=int, default=10,
-                         help="Only used with --degree_matched_calib.")
+                         help="Used with --degree_matched_calib or --use_weighted_conformal.")
+    parser.add_argument("--use_weighted_conformal", action="store_true",
+                         help="For the 'clean' condition only, apply "
+                              "src/weighted_conformal.py's inverse-propensity weighting to "
+                              "the standard uniform draw. The fix Theorem selection-induced-"
+                              "non-exchangeability actually predicts, as opposed to "
+                              "--use_degree_norm or --degree_matched_calib which were "
+                              "engineering workarounds. Mutually exclusive with those two.")
     args = parser.parse_args()
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -387,6 +427,7 @@ def main():
                 condition, args.alpha, seed, args.n_epochs, device,
                 n_rank_points=args.n_rank_points, use_degree_norm=args.use_degree_norm,
                 degree_matched_calib=args.degree_matched_calib, n_degree_bins=args.n_degree_bins,
+                use_weighted_conformal=args.use_weighted_conformal,
                 detector=args.detector,
             )
             if trial_row is None:
@@ -411,6 +452,8 @@ def main():
         suffix = "_degreenorm"
     elif args.degree_matched_calib:
         suffix = "_degreematched"
+    elif args.use_weighted_conformal:
+        suffix = "_weighted"
     else:
         suffix = ""
     # The default detector keeps the original filename, so the run that found

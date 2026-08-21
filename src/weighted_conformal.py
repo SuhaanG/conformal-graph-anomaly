@@ -93,51 +93,65 @@ def weighted_conformal_p_values(calib_scores: np.ndarray, calib_weights: np.ndar
 
 def estimate_selection_propensity(covariate_all: np.ndarray, eligible_mask: np.ndarray,
                                    n_bins: int = 12) -> np.ndarray:
-    """q_hat(W) = P(eligible | W=w), estimated by binning the covariate over
-    the FULL population (not just the eligible/calibration subset) and
-    computing the eligible fraction within each bin.
+    """q_hat(W) = P(eligible | W=w), per node. Thin wrapper around
+    selection_bias.empirical_clean_probability(), which already does this
+    binning and is used elsewhere in the project for the same purpose --
+    reusing it rather than reimplementing avoids two q(w) estimators that
+    could silently diverge. That function returns per-BIN values; this
+    broadcasts back to per-NODE, which is what calibration weighting needs.
 
     covariate_all: covariate value (e.g. degree) for every node in the
         population this propensity should generalize over -- typically every
         normal node, not just calibration-eligible ones. Getting this wrong
         (e.g. binning over only the eligible pool) silently produces q_hat=1
         everywhere, which weights every calibration point equally and
-        defeats the entire purpose -- there is no automatic check against
-        this mistake, so the caller must pass the population, and this is
-        asserted in the smoke test below.
+        defeats the entire purpose.
     eligible_mask: boolean array, same length as covariate_all, True for
-        nodes that passed the selection filter (e.g. zero anomalous
-        neighbors). Requires ground-truth labels -- see the module docstring
-        for why this is not a label-free estimate.
+        nodes that passed the selection filter. Requires ground-truth
+        labels -- see the module docstring for why this is not a
+        label-free estimate.
 
-    Returns q_hat evaluated at every entry of covariate_all (not just the
-    eligible ones), so the caller can index into it for whichever subset of
-    nodes needs weights.
+    Returns q_hat evaluated at every entry of covariate_all.
     """
+    from selection_bias import empirical_clean_probability
+
     covariate_all = np.asarray(covariate_all, dtype=np.float64)
     eligible_mask = np.asarray(eligible_mask, dtype=bool)
     if len(covariate_all) != len(eligible_mask):
         raise ValueError("covariate_all and eligible_mask must be the same length")
 
-    bin_edges = np.quantile(covariate_all, np.linspace(0, 1, n_bins + 1))
-    bin_edges[0] -= 1e-9
-    bin_edges[-1] += 1e-9
-    bin_idx = np.clip(np.digitize(covariate_all, bin_edges) - 1, 0, n_bins - 1)
+    binned = empirical_clean_probability(covariate_all, eligible_mask, n_bins=n_bins)
+    if len(binned["degree_bin"]) == 0:
+        # too few distinct values to bin meaningfully -- fall back to the
+        # population-wide eligible rate for every node
+        rate = float(eligible_mask.mean()) or (1.0 / len(covariate_all))
+        return np.full(len(covariate_all), rate)
 
-    q_hat = np.zeros(len(covariate_all))
-    for b in range(n_bins):
-        in_bin = bin_idx == b
-        n_in_bin = in_bin.sum()
-        if n_in_bin == 0:
-            continue
-        q_hat[in_bin] = eligible_mask[in_bin].sum() / n_in_bin
+    edges = binned["bin_edges"]
+    # MUST replicate empirical_clean_probability's exact digitize call
+    # (same edges, same interior-only slice, same right=False), or indices
+    # into binned["q"] silently misalign -- confirmed with a direct test on
+    # tied/discrete degree data, where independently recomputed edges (not
+    # deduped the same way) produced wrong q values for every point.
+    idx = np.clip(np.digitize(covariate_all, edges[1:-1], right=False),
+                  0, len(binned["q"]) - 1)
+    q_hat = binned["q"][idx]
 
-    # floor away from exactly zero: an unweightable calibration point (q_hat=0,
-    # weight=1/q_hat undefined) means this bin was NEVER observed to be
-    # eligible in the population -- but a point IS in calibration, so q_hat=0
-    # for its own bin is a contradiction, not a valid estimate. Floor at the
-    # smallest nonzero empirical rate actually observed, rather than silently
-    # producing inf weights or crashing.
+    # floor ONLY exact zeros (a calibration point IS eligible by construction,
+    # so q_hat=0 for its own bin is a contradiction), with a FIXED small
+    # epsilon -- not "smallest nonzero observed value". That data-derived
+    # floor is unreliable with few/coarse bins: caught directly when q had
+    # only two distinct nonzero values, both exactly 1.0 (heavily discretized
+    # degree data collapsed bins via np.unique dedup), so "smallest nonzero"
+    # was 1.0 and np.maximum(q_hat, 1.0) silently forced EVERY entry to 1.0,
+    # destroying every real zero in the array. Do not reintroduce that
+    # pattern; a fixed epsilon has no such failure mode.
+    q_hat = np.where(q_hat <= 0, 1.0 / (2 * len(covariate_all)), q_hat)
+
+    # floor away from exactly zero: a calibration point IS eligible by
+    # construction, so q_hat=0 for its own bin is a contradiction, not a
+    # valid estimate (can happen with sparse bins). Floor at the smallest
+    # nonzero empirical rate actually observed.
     nonzero = q_hat[q_hat > 0]
     floor = nonzero.min() if len(nonzero) > 0 else 1.0 / len(covariate_all)
     q_hat = np.maximum(q_hat, floor)
@@ -257,5 +271,30 @@ if __name__ == "__main__":
     print(f"\n  PASSED: at every operating point tested, weighting brings gamma to "
           f"at or below 1 (valid/conservative), while the unweighted case remains "
           f"clearly anti-conservative (gamma > 1.5) at every one of them.")
+
+    print("\n=== Test 3: propensity estimation on tied/discrete data (regression test) ===")
+    # Real degree distributions are heavily discrete with lots of ties at low
+    # values. This exposed two real bugs during development: (1) independently
+    # recomputed bin edges misaligned with empirical_clean_probability's
+    # np.unique-deduped edges when ties collapsed bins, and (2) a floor using
+    # "smallest nonzero observed q" broke when that smallest value was itself
+    # 1.0 (only two distinct q values present), forcing every entry to 1.0 via
+    # np.maximum and destroying every real zero. Both silent, both would have
+    # produced completely wrong weights on real data without ever crashing.
+    rng3 = np.random.default_rng(5)
+    degrees_discrete = rng3.geometric(p=0.3, size=5000).astype(float)
+    eligible_discrete = degrees_discrete < 3
+
+    q_hat_discrete = estimate_selection_propensity(degrees_discrete, eligible_discrete, n_bins=12)
+    low_deg_q = q_hat_discrete[degrees_discrete == 1][0]
+    high_deg_q = q_hat_discrete[degrees_discrete >= 5][0]
+    print(f"  q_hat at degree=1:  {low_deg_q:.4f} (should be high)")
+    print(f"  q_hat at degree>=5: {high_deg_q:.6f} (should be low)")
+    assert low_deg_q > 0.5, "low-degree nodes should show high eligibility propensity"
+    assert high_deg_q < 0.1, "high-degree nodes should show low eligibility propensity"
+    assert len(np.unique(q_hat_discrete)) > 1, (
+        "every node got the same propensity -- the floor-destroys-everything bug is back"
+    )
+    print("  PASSED: propensity correctly discriminates on tied/discrete data")
 
     print("\nALL TESTS PASSED")

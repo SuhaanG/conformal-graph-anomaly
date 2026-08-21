@@ -407,7 +407,8 @@ def empirical_clean_probability(degrees: np.ndarray,
     if len(edges) < 3:
         return {"degree_bin": np.array([]), "q": np.array([]),
                 "count": np.array([]), "is_monotone": False,
-                "kendall_tau": np.nan, "kendall_p": np.nan}
+                "kendall_tau": np.nan, "kendall_p": np.nan,
+                "bin_edges": edges}
 
     idx = np.clip(np.digitize(d, edges[1:-1], right=False), 0, len(edges) - 2)
     centers, qs, counts = [], [], []
@@ -437,4 +438,13 @@ def empirical_clean_probability(degrees: np.ndarray,
         # would falsify it. Non-significant negative tau is weak support, not
         # a violation -- reported as such rather than collapsed to a bool alone.
         "is_monotone": bool(np.isfinite(tau) and tau <= 0 and tau_p < 0.05),
+        # The ACTUAL edges used, after np.unique() dedup (ties collapse bins,
+        # so len(edges) can be less than n_bins+1). Any caller re-binning the
+        # same covariate to align with q above (e.g. weighted_conformal.py's
+        # estimate_selection_propensity) MUST use these exact edges, not
+        # independently recomputed ones -- a mismatched, non-deduped set of
+        # edges silently misaligns which q-bin a point maps to. Caught and
+        # fixed by a direct test with heavily-tied discrete degree data,
+        # where np.unique collapsed 13 requested bins to 6 actual ones.
+        "bin_edges": edges,
     }
