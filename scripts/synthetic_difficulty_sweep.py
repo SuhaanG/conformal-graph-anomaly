@@ -76,14 +76,35 @@ DEFAULT_SHIFTS = [1.00]
 
 
 def auroc(scores, labels):
-    """Mann-Whitney AUROC. numpy only, to keep this path sklearn-free."""
-    s = np.asarray(scores, float); y = np.asarray(labels, int)
+    """Mann-Whitney AUROC with average-rank tie correction. numpy only, to
+    keep this path sklearn-free.
+
+    The previous version used argsort(argsort(...)), which does NOT correct
+    for ties -- confirmed broken directly: on an all-tied input it returned
+    0.0 instead of the correct 0.5 (chance), not merely the 1.0-inflation
+    the naive-argsort failure mode is usually described as; the exact wrong
+    value depends on how ties break under a stable sort relative to the
+    pos/neg concatenation order. Degree is exactly the kind of heavily-tied
+    covariate this project's degree-only AUROC comparisons (2A.4) depend on,
+    so this was a real risk to those numbers, not a theoretical one.
+    Same fix as severity_sweep_pygod_instrumented.py's auroc(), verified
+    there against known tied/separable/reversed cases before reuse here.
+    """
+    s = np.asarray(scores, dtype=np.float64)
+    y = np.asarray(labels, dtype=int)
     pos, neg = s[y == 1], s[y == 0]
     if len(pos) == 0 or len(neg) == 0:
         return float("nan")
-    r = np.argsort(np.argsort(np.concatenate([pos, neg]))) + 1
-    return float((r[:len(pos)].sum() - len(pos) * (len(pos) + 1) / 2)
-                 / (len(pos) * len(neg)))
+    order = np.argsort(s, kind="mergesort")
+    ranks = np.empty(len(s), dtype=float)
+    ranks[order] = np.arange(1, len(s) + 1)
+    _, inv, counts = np.unique(s, return_inverse=True, return_counts=True)
+    sum_ranks_per_value = np.zeros(len(counts))
+    np.add.at(sum_ranks_per_value, inv, ranks)
+    avg_rank = (sum_ranks_per_value / counts)[inv]
+    rank_sum_pos = avg_rank[y == 1].sum()
+    n_pos, n_neg = len(pos), len(neg)
+    return float((rank_sum_pos - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
 def run_one(shift, p_aa, seed, args):
