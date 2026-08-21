@@ -83,11 +83,30 @@ PYGOD_SPECS = {
         # detector family, which is the point of including it
         kwargs=lambda in_dim, n: dict(in_dim=in_dim, hid_dim=64, num_layers=2, dropout=0.0),
     ),
+    "cola": dict(
+        cls="CoLABase", mode="contrastive",
+        # contrastive (positive vs. corrupted-negative pair discrimination),
+        # a THIRD distinct objective family alongside reconstruction (dominant/
+        # gae/anomalydae) and one-class (ocgnn). Added specifically to test
+        # whether ocgnn's near-immunity to weibo's clean-condition exchangeability
+        # violation (theory/joint_discovery_threshold_proposition.md Part 5) is
+        # about "not reconstruction" broadly, or something specific to one-class
+        # scoring -- cola is non-reconstruction but also not one-class, so it
+        # discriminates between those two explanations.
+        kwargs=lambda in_dim, n: dict(in_dim=in_dim, hid_dim=64, num_layers=4, dropout=0.0),
+    ),
 }
 
 # Deliberately excluded, with reasons, so nobody re-derives this:
-#   CoLABase   contrastive; loss_func is BCE over sampled pairs, needs its own
-#              sampling + training loop
+#   CoLABase   MOVED to PYGOD_SPECS above. The original note here said it
+#              "needs its own sampling + training loop" -- that was wrong.
+#              CoLABase.forward(x, edge_index) already does positive/negative
+#              sampling internally via torch.randperm on every call, so a
+#              fresh epoch gets fresh corruption for free; it fits the
+#              existing full-batch forward-then-loss loop in _train_pygod
+#              exactly like every other detector here, via the "contrastive"
+#              mode in _per_node. Left this note in place as a warning against
+#              re-excluding it based on the same wrong assumption.
 #   GAANBase   adversarial (generator/discriminator), needs its own loop
 #   DMGDBase   overwrites x with the adjacency matrix; forward failed on our
 #              feature shapes
@@ -96,7 +115,7 @@ PYGOD_SPECS = {
 #              (x, x_, s, s_, h_a, h_s, dna, dns); reachable but a bigger job
 #   GUIDEBase  needs dim_a and dim_s, where dim_s is a graphlet/motif-degree
 #              dimension requiring its own preprocessing
-EXCLUDED = ["cola", "gaan", "dmgd", "gadnr", "done", "adone", "guide"]
+EXCLUDED = ["gaan", "dmgd", "gadnr", "done", "adone", "guide"]
 
 
 def available_detectors():
@@ -149,6 +168,31 @@ def _per_node(mode, model, data, out):
             loss, per = val[0], val[1]
             return (loss.mean() if loss.dim() > 0 else loss), per
         return (val.mean() if val.dim() > 0 else val), val
+
+    if mode == "contrastive":
+        # CoLABase.forward returns (pos_logits, neg_logits): discriminator
+        # confidence that (node, its own subgraph embedding) is a real pair,
+        # vs. (node, a randomly permuted embedding) is a real pair. Matches
+        # pygod.detector.CoLA.forward_model exactly (full-batch here, so
+        # batch_size = every node rather than a sampled subset).
+        pos_logits, neg_logits = out
+        n = pos_logits.shape[0]
+        logits = torch.cat([pos_logits, neg_logits])
+        con_label = torch.cat([
+            torch.ones(n, device=pos_logits.device),
+            torch.zeros(n, device=pos_logits.device),
+        ])
+        loss = model.loss_func(logits, con_label)
+        # higher score = more anomalous: a node whose corrupted (negative)
+        # pairing looks MORE like a real pair than its own true pairing does
+        # is the contrastive-objective's definition of anomalous. Note this
+        # is intentionally NOT averaged over multiple random negative draws
+        # at eval time -- PyGOD's own DeepDetector.decision_function does a
+        # single forward pass too (checked directly against pygod source,
+        # not assumed), so a single-shot eval score here matches the
+        # reference implementation's own behavior, not a deviation from it.
+        score = (neg_logits - pos_logits).detach()
+        return loss, score
 
     raise ValueError(f"unknown scoring mode {mode!r}")
 
