@@ -109,6 +109,11 @@ from selection_bias import (
     score_degree_dependence,
 )
 from real_data_experiment import load_any_dataset, SUPPORTED_DATASETS
+from weighted_conformal import (
+    weighted_conformal_p_values,
+    estimate_selection_propensity,
+    calibration_weights_from_propensity,
+)
 
 # "true_contam_XX" injects ACTUAL ANOMALIES into calibration at rate XX%.
 # This is what "contaminated calibration" means in Bates et al. 2023 and
@@ -120,7 +125,16 @@ from real_data_experiment import load_any_dataset, SUPPORTED_DATASETS
 # where BH needs 125 floor-tied points to reject anything and NO strategy can
 # discover. In deployment only `clean` is actually limited to its pool -- random
 # can use every eligible normal. Reported separately with in_matched_frame=False.
-STRATEGIES = ["clean", "random", "exposed_only", "true_contam_05", "true_contam_10"]
+# "weighted" reuses the EXACT SAME calibration draw as "clean" (not a fresh
+# draw from the same pool -- the identical indices), so the only difference
+# between the two rows for a given seed is whether inverse-propensity
+# weighting was applied. This isolates the weighting's effect from ordinary
+# draw-to-draw noise, which a fresh independent draw would not do. See
+# src/weighted_conformal.py -- the remedy Theorem selection predicts
+# (theory/joint_discovery_threshold_proposition.md Parts 4/6), tested here
+# for the first time against real data instead of only the synthetic
+# simulation in that module's own self-test.
+STRATEGIES = ["clean", "weighted", "random", "exposed_only", "true_contam_05", "true_contam_10"]
 UNMATCHED = ["random_full"]
 
 TRUE_CONTAM_RATES = {"true_contam_05": 0.05, "true_contam_10": 0.10}
@@ -209,6 +223,7 @@ def run_seed(graph, features, labels, seed, args):
 
     t_grid = adaptive_t_grid(n_calib)
     out = []
+    clean_calib_idx = None  # populated when "clean" is processed; "weighted" reuses it
     for strat in STRATEGIES + UNMATCHED:
         if strat == "random_full":
             n_here = min(args.n_calib_full, len(pools["random"]))
@@ -222,12 +237,35 @@ def run_seed(graph, features, labels, seed, args):
             calib_idx = np.concatenate([
                 rng.choice(pools["random"], size=n_norm, replace=False),
                 rng.choice(anom_pool, size=n_anom, replace=False)])
+        elif strat == "weighted":
+            if clean_calib_idx is None:
+                continue  # "clean" must run first in STRATEGIES for this to fire
+            calib_idx = clean_calib_idx
         else:
             calib_idx = rng.choice(pools[strat], size=n_calib, replace=False)
 
+        if strat == "clean":
+            clean_calib_idx = calib_idx
+
         n_here = len(calib_idx)
         grid_here = t_grid if strat not in UNMATCHED else adaptive_t_grid(n_here)
-        p = conformal_p_values(scores[calib_idx], scores[test_idx])
+
+        if strat == "weighted":
+            # q_hat estimated over the FULL eligible normal population (not
+            # just calibration), degree as the covariate -- exactly the
+            # setup weighted_conformal.py's own docstring requires to avoid
+            # silently producing q_hat=1 everywhere and defeating the point.
+            eligible_mask_for_q = np.isin(eligible, unexposed)
+            q_hat_eligible = estimate_selection_propensity(
+                degrees[eligible], eligible_mask_for_q, n_bins=args.n_degree_bins)
+            # index into the eligible-population estimate at calib_idx's positions
+            eligible_pos = {int(idx): pos for pos, idx in enumerate(eligible)}
+            q_hat_calib = np.array([q_hat_eligible[eligible_pos[int(i)]] for i in calib_idx])
+            calib_weights = calibration_weights_from_propensity(q_hat_calib)
+            p = weighted_conformal_p_values(scores[calib_idx], calib_weights,
+                                            scores[test_idx], test_weight=1.0)
+        else:
+            p = conformal_p_values(scores[calib_idx], scores[test_idx])
         rej = benjamini_hochberg(p, args.alpha)
         k = int(rej.sum())
         fdr = float(np.sum(rej & (test_labels == 0)) / k) if k else 0.0
