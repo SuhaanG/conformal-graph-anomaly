@@ -438,6 +438,17 @@ def main():
                     help="Calibration size for the unmatched random_full arm, "
                          "which measures what random calibration achieves when "
                          "it is NOT handicapped to the clean pool's size.")
+    ap.add_argument("--n_degree_bins", type=int, default=10,
+                    help="Quantile bins for the weighted arm's propensity "
+                         "estimate q(d). Same default as "
+                         "condition_comparison_pygod.py. This flag was MISSING "
+                         "when the weighted arm landed: run_seed() read "
+                         "args.n_degree_bins at line 260 but main() never "
+                         "defined it, so every CLI invocation crashed with "
+                         "AttributeError while the integration test passed -- "
+                         "it constructs args by hand and bypassed argparse. "
+                         "That is why the 2026-08-22 overnight chain produced "
+                         "no strategy CSVs.")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--use_sparse_prop", action="store_true")
     args = ap.parse_args()
