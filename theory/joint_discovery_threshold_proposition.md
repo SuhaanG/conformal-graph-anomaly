@@ -1222,3 +1222,67 @@ paper should state this plainly: the diagnostic generalises, a working
 configuration has been demonstrated once, and whether useful power is
 achievable in general is open.
 achievable in general is open.
+
+---
+
+## Part 9: Weighted conformal ran on real data. It FAILS -- exactly as the ceiling corollary predicts.
+
+Run: strategy_rerun 2026-08-23, matched frames, 5 seeds. CSVs in
+results/published/ (commit 5eb84cb). Amazon's two stages failed and are
+pending; six of eight cells completed.
+
+### The result
+
+    tolokers / dominant_pygod (the flagship broken cell):
+        clean      gamma 15.15   disc 1543   FDR 0.382
+        WEIGHTED   gamma 14.72   disc 1347   FDR 0.366    <- no fix
+        random     gamma  0.66   disc  140   FDR 0.016    <- fixed, and useful
+
+    weibo / gae:
+        clean      gamma 2.84    FDR 0.279
+        WEIGHTED   gamma 2.89    FDR 0.279                <- identical
+        random     gamma 1.14    FDR 0.084
+
+Weighted conformal, with weights proportional to 1/q(d) estimated from the
+degree-propensity, leaves gamma essentially unchanged in every broken cell,
+while plain random calibration fixes the same cells outright.
+
+### Why this is a CONFIRMATION, not a disappointment
+
+Part 4's ceiling corollary, stated before any of this ran: any reweighting
+scheme within the eligible pool produces a distribution absolutely continuous
+with respect to the pool, and can never place mass where the pool has none.
+On tolokers the clean pool sits at mean degree 5.7 against a test population
+at 65.6 -- the high-degree support is simply ABSENT from the pool, so no
+weights exist that recover it. The importance weights 1/q(d) blow up exactly
+where there is nothing to weight.
+
+The synthetic self-test in weighted_conformal.py passed (gamma 4.66 -> 0.88)
+because its engineered shift preserved support overlap. Real topological
+filtering does not: P(exposure=0 | degree) decays too fast, and the pool is
+combinatorially empty above moderate degree. Same reason
+degree_matched_calib_sample() capped at half the gap in Part 3, now
+demonstrated for the principled estimator too.
+
+### What this settles for the paper
+
+1. The remedy is NOT reweighting. It is refusing to filter: random calibration
+   is now demonstrated valid AND useful on two graphs (amazon/gae/random_full:
+   101 disc, FDR 0.059; tolokers/pygod/random: 140 disc, FDR 0.016, with
+   random_full at 162/0.033). "Do not filter" is the deployable
+   recommendation, and the failure of the sophisticated alternative is what
+   makes that recommendation complete rather than lazy.
+2. The weighted-conformal failure is a THEOREM-CONFIRMING negative result and
+   should be reported as such: Tibshirani et al.'s reweighting requires
+   support overlap that topological selection destroys by construction.
+3. Weibo stays consistent: its violation (gae clean gamma 2.84 at sdeg -0.087,
+   near-zero degree gap) is not degree-mediated, and degree-based weights
+   accordingly do nothing there. The second channel remains open and is
+   honestly reported as such.
+
+### Pending
+
+Amazon x {dominant_pygod, gae} failed in the rerun (cause in
+strategy_rerun.log; the n_degree_bins fix was in place for the other six, so
+this is a different, amazon-specific failure). The flagship gamma-13.22 cell
+therefore has no weighted measurement yet. Rerun before writing Section 7.
