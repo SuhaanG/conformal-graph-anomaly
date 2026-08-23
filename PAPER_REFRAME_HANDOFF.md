@@ -502,7 +502,18 @@ Do not cite a number that is not in this table or in a committed CSV.
 | p_aa sweep AUROC | 0.0793 -> 1.0000 across p_aa 0.005 -> 0.3 | `synthetic_difficulty_dominant_pygod.csv` |
 | degree-only AUROC, same sweep | 0.0330 -> 1.0000 | theory doc Part 7 |
 
-**BLOCKER: five of these CSVs are NOT in the repo yet.** They exist only in
+**RESOLVED 2026-08-23, WITH A CAVEAT THAT SUPERSEDES PARTS OF THIS TABLE.**
+All CSVs are now committed, including every strategy cell with the weighted
+arm. But adding the weighted arm changed the RNG call order in run_seed, so
+the amazon rows below (recorded from pre-weighted runs) differ slightly from
+the final CSVs. **When writing, read every number from the final committed
+CSVs -- the ones containing weighted rows -- never from this table or from
+older runs.** The weighted result itself, for Section 7: weighted conformal
+fails in all three regimes (partial-and-worse on amazon/pygod: gamma 13.15 ->
+9.55 but FDR 0.785 -> 0.844; inert on weibo; and it BREAKS the valid
+amazon/gae configuration: gamma 0.79 -> 2.06). See theory doc Part 9.
+
+**Original blocker note (kept for context): five of these CSVs are NOT in the repo yet.** They exist only in
 `results/logs/` on the H200. Until they are copied to `results/published/` and
 committed, Gopal cannot verify any number sourced from them, and the paper
 would be citing figures with no checkable provenance -- the exact problem

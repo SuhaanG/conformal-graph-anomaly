@@ -1286,3 +1286,45 @@ Amazon x {dominant_pygod, gae} failed in the rerun (cause in
 strategy_rerun.log; the n_degree_bins fix was in place for the other six, so
 this is a different, amazon-specific failure). The flagship gamma-13.22 cell
 therefore has no weighted measurement yet. Rerun before writing Section 7.
+
+### Part 9 completion: amazon ran. Weighted conformal fails in ALL THREE regimes.
+
+The amazon rerun (GPU, 2026-08-23, commit pending) fills the flagship cell,
+and the full picture is now a three-regime negative result:
+
+    1. Violation present, degree-mediated, support missing
+       (amazon/pygod, tolokers/pygod):
+           amazon:   clean gamma 13.15, FDR 0.785  ->  weighted gamma 9.55,
+                     FDR 0.844, power halved (0.404 -> 0.196)
+           tolokers: clean gamma 15.15, FDR 0.382  ->  weighted 14.72, 0.366
+       Weighting shrinks the tail violation PARTIALLY (there is some overlap
+       mass at moderate degree to upweight) but cannot reach the missing
+       support, and on amazon it makes realized FDR WORSE: the reweighting
+       suppresses true discoveries faster than false ones.
+
+    2. Violation present but NOT degree-mediated (weibo):
+           gae: clean gamma 2.84 -> weighted 2.89. No effect, as predicted --
+           the weights are keyed to a covariate that is not the channel.
+
+    3. NO violation (amazon/gae, clean is valid at gamma 0.79, FDR 0.075):
+           weighted gamma 2.06, FDR 0.185 -- the weights CREATE a violation
+           where none existed. gae's score does not depend on degree, so
+           reweighting by 1/q(d) injects degree structure into p-values that
+           had none.
+
+Cannot fix, does nothing, or actively breaks -- depending on regime. Meanwhile
+unfiltered random calibration is valid in every cell and useful in three
+(amazon/gae/random_full 97 disc at FDR 0.037; tolokers/pygod/random 140 at
+0.016 and random_full 162 at 0.033). The paper's remedy section writes itself:
+do not filter, and do not reweight either.
+
+### CAVEAT for the paper: cite ONLY the final CSVs
+
+Adding the weighted arm changed the RNG call order inside run_seed, so
+non-weighted rows differ slightly from the pre-weighted runs (e.g. amazon/gae
+clean was 29 disc at FDR 0.033 in the old run, 61 at 0.075 in the final one;
+random_full 101 at 0.059 vs 97 at 0.037). Conclusions are unchanged, but
+NUMBERS IN THE PAPER MUST COME FROM THE FINAL COMMITTED CSVs -- the ones
+containing weighted rows -- not from any earlier run or from the handoff's
+2B.5 table, whose amazon rows predate the RNG change. Mixing runs in one table
+would produce internally inconsistent columns a reviewer could catch.
