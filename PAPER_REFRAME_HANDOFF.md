@@ -1,7 +1,5 @@
 # Project handoff: conformal graph anomaly detection
 
-**For Gopal, or anyone (human or assistant) picking this up cold.
-Last updated 2026-08-17.**
 
 This document is self-contained. You should not need any prior conversation to
 continue the work. Read sections 1-3 for orientation, 4-6 for evidence, 7-9 for
