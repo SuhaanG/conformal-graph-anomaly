@@ -11,10 +11,6 @@ what to do next.
 
 ## 1. What this project is
 
-**Repo:** `conformal-graph-anomaly` (github.com/SuhaanG/conformal-graph-anomaly)
-**Authors:** Suhaan Khan (UIUC), Suhaan Gopal (McNeil HS) -- equal contribution
-**Paper draft:** lives in Overleaf, mirrored in the untracked `paper/` directory
-
 **The domain.** Graph anomaly detection (GAD): find fraudulent/anomalous nodes
 in an attributed graph. A detector assigns each node an anomaly score, but a
 score is not a decision -- you need a threshold, and on a large graph any
