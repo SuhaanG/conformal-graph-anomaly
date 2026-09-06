@@ -25,3 +25,8 @@ results/logs/*
 tmp_tolokers/
 tmp_*/
 *_data/
+# Internal paper notes and the old non-anonymous draft: never ship these with the code
+paper/
+
+# Internal planning and status notes: kept locally, never shipped with the code
+notes/

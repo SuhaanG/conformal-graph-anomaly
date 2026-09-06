@@ -15,7 +15,7 @@ import os
 if os.path.exists('conformal-graph-anomaly'):
     os.chdir('conformal-graph-anomaly'); !git pull origin main
 else:
-    !git clone https://github.com/SuhaanG/conformal-graph-anomaly.git
+    !git clone https://github.com/ANONYMIZED/conformal-graph-anomaly.git
     os.chdir('conformal-graph-anomaly')
 ```
 

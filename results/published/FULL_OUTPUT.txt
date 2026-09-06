@@ -74,8 +74,8 @@ Detector: dominant_pygod (see src/detectors.py)
   seed 18: auroc=1.0000 n_discoveries= 804 realized_fdr=0.067 power=1.000 | floor_predicts=True any_r_predicts=True observed=True
   seed 19: auroc=1.0000 n_discoveries= 856 realized_fdr=0.124 power=1.000 | floor_predicts=True any_r_predicts=True observed=True
 
-Saved trial-level results to /home/suhaank2/conformal-graph-anomaly/scripts/../results/logs/condition_comparison_pygod.csv
-Saved rank-grid results to /home/suhaank2/conformal-graph-anomaly/scripts/../results/logs/condition_comparison_pygod_ranks.csv
+Saved trial-level results to /home/user/conformal-graph-anomaly/scripts/../results/logs/condition_comparison_pygod.csv
+Saved rank-grid results to /home/user/conformal-graph-anomaly/scripts/../results/logs/condition_comparison_pygod_ranks.csv
 
 === Summary (mean +/- std across seeds) ===
 clean: auroc=1.0000+/-0.0000, realized_fdr=0.132+/-0.037 (nominal alpha=0.1), power=1.000+/-0.000, zero-discovery trials=0/20
@@ -142,7 +142,7 @@ Done loading data from cached files.
     ocgnn            seed 3: spearman=+0.5057 mean_p=0.6591 (null_p=1.000) ks=0.0282 disc=0
     ocgnn            seed 4: spearman=+0.5463 mean_p=0.5894 (null_p=1.000) ks=0.1609 disc=841
 ### loading reddit
-/home/suhaank2/envs/dgl311/lib/python3.11/site-packages/pygod/utils/utility.py:173: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+/home/user/envs/dgl311/lib/python3.11/site-packages/pygod/utils/utility.py:173: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
   data = torch.load(file_path)
     10984 nodes, 366 anomalies (0.0333)
     dominant_ours    seed 0: spearman=+0.1349 mean_p=0.4255 (null_p=0.000) ks=0.1614 disc=5
@@ -228,7 +228,7 @@ Done!
     ocgnn            seed 3: spearman=-0.2168 mean_p=0.5538 (null_p=1.000) ks=0.0307 disc=12
     ocgnn            seed 4: spearman=-0.2054 mean_p=0.5710 (null_p=1.000) ks=0.0025 disc=39
 
-Saved 100 rows to /home/suhaank2/conformal-graph-anomaly/scripts/../results/logs/selection_bias_matrix.csv
+Saved 100 rows to /home/user/conformal-graph-anomaly/scripts/../results/logs/selection_bias_matrix.csv
 
 ==============================================================================
 PART 4 PREDICTION 2: does gamma track score-degree dependence?
@@ -319,7 +319,7 @@ Dataset: synthetic | variants: ['score1d', 'embed', 'feat', 'embed_score'] | cla
 
 Frame invariant holds across all 40 (dataset, condition, seed) groups.
 
-Saved 200 rows to /home/suhaank2/conformal-graph-anomaly/scripts/../results/logs/adadetect_comparison_synthetic.csv
+Saved 200 rows to /home/user/conformal-graph-anomaly/scripts/../results/logs/adadetect_comparison_synthetic.csv
 
 === Summary ===
 ours_matched_none_contaminated:
