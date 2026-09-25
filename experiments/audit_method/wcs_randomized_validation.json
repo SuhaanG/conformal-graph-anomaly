@@ -1,0 +1,8 @@
+{
+  "exact_uniformity_cases": 243,
+  "exact_assignments": 23112,
+  "thresholds": 49,
+  "mc_fdr_cases": 216,
+  "mc_draws_per_case": 10000,
+  "max_fdr_minus_bound_in_se": 2.162085637931661
+}

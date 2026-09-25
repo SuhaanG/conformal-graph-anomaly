@@ -1,0 +1,11 @@
+{
+  "fast_vs_reference_cases": 400,
+  "exact_design_cases": 486,
+  "exact_assignments": 46224,
+  "max_fdr_minus_bound": {
+    "wcs_deterministic": -0.05828750000000005,
+    "wcs_homogeneous": -0.03818666666666656
+  },
+  "weighted_bh_max_fdr_minus_bound": -0.024476666666666674,
+  "weighted_bh_cases_above_bound": 0
+}
