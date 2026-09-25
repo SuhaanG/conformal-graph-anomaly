@@ -152,9 +152,8 @@ def compute_exposure(graph, labels, normal_idx):
 def standardized_gap(a, b):
     """Cohen's d between calibration and test-normal scores.
 
-    This is the quantity conformal validity actually depends on -- not the
-    global score-covariate correlation the beta sweep used as its x-axis, which
-    turned out to be the wrong summary (gamma crossed 1 at sdeg=+0.67, not 0).
+    Descriptive mean-shift diagnostic only: neither this statistic nor a
+    score-covariate correlation is sufficient to establish conformal validity.
     """
     a, b = np.asarray(a, float), np.asarray(b, float)
     if len(a) < 2 or len(b) < 2:

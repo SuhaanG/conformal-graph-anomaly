@@ -1,15 +1,19 @@
 # Calibration selection and conformal FDR control in graph anomaly detection
 
-Code and data for the paper *Calibration Selection, Not Contamination, Breaks
-Conformal FDR Control in Graph Anomaly Detection* (under review). The paper asks
-when conformal p-values combined with Benjamini–Hochberg keep their false
-discovery rate guarantee in unsupervised graph anomaly detection, and shows that
-the standard precaution of restricting calibration to normal nodes with no
-anomalous neighbors is itself a covariate selection filter that can break the
-guarantee, while true contamination of the calibration set does not.
+Research code for *Calibration Selection Can Inflate False Discoveries on Graphs*.
+The study compares exposure-based selection among verified normal calibration
+nodes with size-matched random references. The exposure rule is a controlled
+diagnostic intervention, not an established industry practice. Selection can
+distort reference ranks; useful discoveries also depend on detector quality,
+reference size, and the label-acquisition design. Contamination is a separate
+question and is not claimed to be harmless in general.
 
-Every number in the paper traces to a CSV in `results/published/`; the index in
-`results/published/README.md` maps each table to the file that produced it.
+The current revision and its reproduction guide are under `paper/aistats_revision/`;
+supervised controls and observed-exposure sensitivity experiments are under
+`paper/audit_method/`. The `results/published/` directory retains historical
+experiments. Some historical rows used an invalid Amazon label convention or
+other superseded protocols and are not evidence for the current conclusions.
+The script/table mapping below describes those historical experiments.
 
 ## Layout
 

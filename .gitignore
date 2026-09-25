@@ -25,6 +25,8 @@ results/logs/*
 tmp_tolokers/
 tmp_*/
 *_data/
+# Local GADBench downloads and vendor runtime; provenance is recorded separately.
+data/gadbench/
 # Internal paper notes and the old non-anonymous draft: never ship these with the code
 paper/
 
