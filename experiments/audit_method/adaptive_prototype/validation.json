@@ -1,0 +1,6 @@
+{
+  "inversion_cases": 282,
+  "enumerated_ordered_binary_paths": 2044,
+  "maximum_anytime_noncoverage": 0.011904761904761904,
+  "delta": 0.05
+}

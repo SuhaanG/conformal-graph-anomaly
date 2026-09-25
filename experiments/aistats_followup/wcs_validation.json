@@ -1,0 +1,9 @@
+{
+  "literal_equation_cases": 80,
+  "weight_scale_and_permutation_checks": "passed",
+  "reference_constant_weight_cases": 6,
+  "source_sha256": "b92a983c90968a603ff541882a778bccc833bc9dd732c74b2e588ddb8b06ed5c",
+  "reference_discrepancy": "Public weighted_CS auxiliary numerator uses test_weights[k]; equation (6) uses test_weights[j]. Public code also randomizes rank p-values; Algorithm 2 refers to nonrandomized equation (5). This implementation follows the paper equations, not the discrepant variable-weight reference code.",
+  "algorithm_source": "https://arxiv.org/html/2307.09291v2#S6",
+  "source_url": "https://github.com/ying531/conformal-selection/blob/main/confselect-python/ConfSelect/confselect.py"
+}

@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "exact_adaptive_populations": 256,
+  "exhaustive_nonempty_selections": 2880,
+  "largest_exact_failure_probability": 0.028571428571428577,
+  "enumeration_delta": 0.2,
+  "stress_trials": 2000,
+  "stress": [
+    {
+      "prefix_precision": 0.0,
+      "nonempty": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "prefix_precision": 0.5,
+      "nonempty": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "prefix_precision": 0.9,
+      "nonempty": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "prefix_precision": 0.98,
+      "nonempty": 340,
+      "failure_rate": 0.0
+    },
+    {
+      "prefix_precision": 1.0,
+      "nonempty": 400,
+      "failure_rate": 0.0
+    }
+  ],
+  "checks": [
+    "complete pilot/certificate randomization enumeration",
+    "direct brute-force hypergeometric inversion",
+    "nonvacuous full-pipeline trials",
+    "all-audited nodes excluded",
+    "budget caps respected"
+  ]
+}

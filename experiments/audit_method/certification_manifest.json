@@ -1,0 +1,12 @@
+{
+  "rows": 192000,
+  "repetitions": 200,
+  "training_seeds": 10,
+  "master_seed": 20260923,
+  "q": 0.1,
+  "delta": 0.05,
+  "sha256": "e2ec262862b1812db28bbf4c439fe00f4de23dbc87bbe3bd7636d6a1987449c8",
+  "seconds": 86.58699035644531,
+  "guarantee": "P_audit(FDP of selected unreviewed set <= .1) >= .95; fixed graph, scores, candidate family, correct random audit labels",
+  "max_empirical_failure": 0.0
+}

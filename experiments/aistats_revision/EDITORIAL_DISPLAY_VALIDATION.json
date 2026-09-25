@@ -1,0 +1,96 @@
+{
+  "source": "unchanged stored seed outcomes",
+  "table_rows": [
+    {
+      "dataset": "amazon",
+      "model": "hgb_attributes",
+      "exposure": {
+        "fdp": 0.11917327165977165,
+        "power": 0.7991871600688584
+      },
+      "random": {
+        "fdp": 0.08818703374608938,
+        "power": 0.7775766405221518
+      },
+      "fdp_difference": 0.030986237913682275,
+      "lower": 0.022469677953003656,
+      "upper": 0.039502797874360895
+    },
+    {
+      "dataset": "amazon",
+      "model": "hgb_graph_features",
+      "exposure": {
+        "fdp": 0.14475137286727116,
+        "power": 0.82047587697552
+      },
+      "random": {
+        "fdp": 0.09107943959187519,
+        "power": 0.787851187089276
+      },
+      "fdp_difference": 0.053671933275395954,
+      "lower": 0.03853609727195811,
+      "upper": 0.0688077692788338
+    },
+    {
+      "dataset": "tfinance",
+      "model": "hgb_attributes",
+      "exposure": {
+        "fdp": 0.12651757072324313,
+        "power": 0.6682239788004127
+      },
+      "random": {
+        "fdp": 0.09278009576862248,
+        "power": 0.6501177795057143
+      },
+      "fdp_difference": 0.033737474954620636,
+      "lower": 0.024448417745050292,
+      "upper": 0.04302653216419098
+    },
+    {
+      "dataset": "tfinance",
+      "model": "hgb_graph_features",
+      "exposure": {
+        "fdp": 0.19127427774602554,
+        "power": 0.8299195009849065
+      },
+      "random": {
+        "fdp": 0.09480797802872545,
+        "power": 0.7886106702690212
+      },
+      "fdp_difference": 0.09646629971730009,
+      "lower": 0.07716483467598147,
+      "upper": 0.1157677647586187
+    },
+    {
+      "dataset": "weibo_gadbench",
+      "model": "hgb_attributes",
+      "exposure": {
+        "fdp": 0.18438015691179893,
+        "power": 0.782840578220565
+      },
+      "random": {
+        "fdp": 0.09431278087104557,
+        "power": 0.6634646938072039
+      },
+      "fdp_difference": 0.09006737604075336,
+      "lower": 0.07454861344812815,
+      "upper": 0.10558613863337858
+    },
+    {
+      "dataset": "weibo_gadbench",
+      "model": "hgb_graph_features",
+      "exposure": {
+        "fdp": 0.2863211237963243,
+        "power": 0.9733785880362367
+      },
+      "random": {
+        "fdp": 0.09092946728095844,
+        "power": 0.8440138445507867
+      },
+      "fdp_difference": 0.19539165651536589,
+      "lower": 0.18015010830279507,
+      "upper": 0.2106332047279367
+    }
+  ],
+  "figure": "All three declared graphs, both scorers, moderate biased acquisition; complete original figure retained in appendix"
+}

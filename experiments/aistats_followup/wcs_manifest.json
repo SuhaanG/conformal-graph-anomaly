@@ -1,0 +1,12 @@
+{
+  "master_seed": 20260916,
+  "repetitions": 2000,
+  "evaluations": 60000,
+  "seconds": 57.45085167884827,
+  "n_calibration": 200,
+  "n_test": 400,
+  "n_null": 360,
+  "rank_randomization": false,
+  "nominal_alpha": 0.1,
+  "diagnostic_schema_note": "weighted_rank_null_tail_005 describes the weighted ranks, including on ordinary-BH rows; renamed for clarity without changing any numerical value."
+}

@@ -1,0 +1,106 @@
+{
+  "exact_adaptive_two_cell": {
+    "paths": 256,
+    "max_anytime_noncoverage": 0.0
+  },
+  "full_pipeline_stress": [
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.0,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.0,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.5,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.5,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.9,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.9,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.98,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 0.98,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 1.0,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 400,
+      "prefix_precision": 1.0,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 1600,
+      "prefix_precision": 1.0,
+      "method": "adaptive_score",
+      "repetitions": 50,
+      "nonempty": 50,
+      "certificate_failures": 0
+    },
+    {
+      "prefix_size": 1600,
+      "prefix_precision": 1.0,
+      "method": "adaptive_degree",
+      "repetitions": 50,
+      "nonempty": 0,
+      "certificate_failures": 0
+    }
+  ],
+  "nonvacuous_output_observed": true,
+  "note": "The initial 400-node high-precision tests all abstained. A 1600-node all-anomaly positive control was added afterwards to distinguish algorithm inefficiency from an always-abstain implementation."
+}

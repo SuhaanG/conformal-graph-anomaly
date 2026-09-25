@@ -1,0 +1,12 @@
+{
+  "trial_rows": 810000,
+  "split_cells": 16200,
+  "all_outcomes_included": true,
+  "summary_recomputed": true,
+  "finite_design": {
+    "settings": 252,
+    "assignments": 11340,
+    "nonempty": 1236,
+    "max_bound_excess": 0.0
+  }
+}

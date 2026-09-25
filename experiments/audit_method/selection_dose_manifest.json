@@ -1,0 +1,17 @@
+{
+  "protocol_sha256": "394792fb402d1865774823cdbf2471174e439c1f707f3acd40981c82fa181775",
+  "script_sha256": "a7455031790da034bd1443c9d8eb9d87f39ce81db971bae646f31d9b4b345653",
+  "rows": 810000,
+  "unknown_label_checks": 450,
+  "bh_reference_checks": 100,
+  "repetitions": 50,
+  "master": 20260923,
+  "seconds": 102.1833245754242,
+  "score_ties": "independent lexicographic uniforms fixed before splits",
+  "files": {
+    "selection_dose_trials.csv.gz": "1378ff052a9c734492a111a91879993840a63ca285539a0037b51d633cae7e41",
+    "selection_dose_splits.csv": "bd12b353be889796b44ef7466d63160e7fe7526bd3cdef7b69b67f1152a23bea",
+    "selection_dose_seeds.csv": "1e26428879eb7c5a168b0bf6e776b03ac59bb356179f71dd811af02c6dcd3dd8",
+    "selection_dose_summary.csv": "25d4ee8be4eabf5f3211061e713d4a62a756bf04d1ccccc8ac312958683d3983"
+  }
+}

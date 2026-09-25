@@ -1,0 +1,24 @@
+{
+  "python": "3.14.2",
+  "numpy": "2.5.0",
+  "dataset": "weibo",
+  "detector": "gae",
+  "nodes": 8405,
+  "undirected_edges": 377271,
+  "edge_array_sha256": "e2fca16a19d17d6075750e7b575a4b3147f4cd74c0218f8053e4d4b7d8cd3c87",
+  "completed_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "calibration_repetitions": 200,
+  "fixed_thresholds": [
+    0.01,
+    0.05
+  ],
+  "master_seed": 20260914,
+  "maximum_absolute_mcse_units": 2.923135181356574,
+  "exhaustive_tied_score_check": "passed"
+}

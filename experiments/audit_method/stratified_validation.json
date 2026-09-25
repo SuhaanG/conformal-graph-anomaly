@@ -1,0 +1,7 @@
+{
+  "exact_joint_assignments": 44256,
+  "nonempty_joint_assignments": 16110,
+  "max_union_fdr_minus_alpha": -0.026446280991735543,
+  "independent_rank_checks": 200,
+  "empty_reference_abstains": true
+}

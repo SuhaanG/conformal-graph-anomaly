@@ -1,0 +1,13 @@
+dataset,model,variant,method,fdp,power,discoveries,true_discoveries,auroc,n_calib,n_reference_labels,fdp_seed_sd,power_seed_sd
+amazon,dominant_pygod,degree_normalized,filtered,0.16452685057535393,0.06126829268292683,145.88,12.559999999999999,0.5357161508359016,162.0,6480.0,0.18177405233603428,0.07092085726527088
+amazon,dominant_pygod,degree_normalized,full_reference,0.0,0.0,0.0,0.0,0.5357161508359016,5864.0,6480.0,0.0,0.0
+amazon,dominant_pygod,degree_normalized,matched_random,8.549618320610687e-05,9.268292682926828e-06,0.0131,0.0019,0.5357161508359016,162.0,6480.0,0.0002703626701823347,2.9308914899121565e-05
+amazon,dominant_pygod,raw,full_reference,0.0,0.0,0.0,0.0,0.3400279080506617,5864.0,6480.0,0.0,0.0
+amazon,gae,raw,full_reference,0.0,0.0,0.0,0.0,0.8657611623633772,5864.0,6480.0,0.0,0.0
+amazon,isolation_forest,raw,full_reference,0.0,0.0,0.0,0.0,0.8398865449636975,5864.0,6480.0,0.0,0.0
+tolokers,dominant_pygod,degree_normalized,filtered,0.0,0.0,0.0,0.0,0.47601692811940577,621.0,8818.0,0.0,0.0
+tolokers,dominant_pygod,degree_normalized,full_reference,0.0,0.0,0.0,0.0,0.47601692811940577,6894.0,8818.0,0.0,0.0
+tolokers,dominant_pygod,degree_normalized,matched_random,0.0,0.0,0.0,0.0,0.47601692811940577,621.0,8818.0,0.0,0.0
+tolokers,dominant_pygod,raw,full_reference,0.0,0.0,0.0,0.0,0.5299626288948267,6894.0,8818.0,0.0,0.0
+tolokers,gae,raw,full_reference,0.0,0.0,0.0,0.0,0.4313725988982252,6894.0,8818.0,0.0,0.0
+tolokers,isolation_forest,raw,full_reference,0.0,0.0,0.0,0.0,0.3965598220045626,6894.0,8818.0,0.0,0.0

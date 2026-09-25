@@ -1,0 +1,7 @@
+# Additional graph control, frozen before training
+
+Date: 2026-09-23. This extension was chosen after inspecting the Amazon/Tolokers removal experiment; it is exploratory. Use the already verified official PyGOD Weibo file (8,405 nodes; 347 nonzero anomaly labels). Its raw SHA-256 is 3827dca358a7bab33bef0b494db74e22642aad779c15da764d9ccec9806ce46c. The upstream README reports 868, inconsistent with the actual distributed file. No labels are recoded to force agreement with the README.
+
+Reuse the two supervised classifiers, every hyperparameter, ten-seed 10% uniform training design, and five stratified test-split protocol already used on Amazon/Tolokers. No model or score direction is tuned after inspecting Weibo outcomes. Attribute standardization uses the full unlabeled graph as in the existing transductive experiments. Graph features add neighbor-average attributes and log degree. Training labels remain disjoint from calibration and evaluation. Evaluate AUROC and average precision on all nontraining nodes.
+
+Apply the complete DOSE_PROTOCOL.md grid unchanged to this third graph, with dataset seed index 2. Regenerate the combined three-graph ledger using the same dataset indices 0 and 1 for Amazon/Tolokers; the earlier two-graph numeric outcomes must reproduce. Report the complete Weibo outcome including low-power or absent effects. No new batch-certification experiment or GPU training is specified.

@@ -1,0 +1,18 @@
+{
+  "dataset": "tolokers",
+  "nodes": 11758,
+  "undirected_edges": 519000,
+  "anomalies": 2566,
+  "raw_sha256": "dacf3ac94cec53d03cd2adb5255c08b33dee1656c33ca8164a464bd9450a1667",
+  "feature_sha256": "2a5240a17f822fbaea24816ba1d9863eeee68b955ecb2acfcb3ea56eb3f7a3e1",
+  "label_sha256": "808c63a620abae774a7614459d9bfe6a258ee3460f2e39ca0511c59dbf553518",
+  "torch": "2.13.0+cpu",
+  "device": "cpu",
+  "epochs": 100,
+  "hidden_units": 64,
+  "layers": 4,
+  "learning_rate": 0.01,
+  "dropout": 0,
+  "threads": 4,
+  "notes": "Fresh canonical sparse-edge load of same public graph. No claim of bitwise GPU reproduction."
+}

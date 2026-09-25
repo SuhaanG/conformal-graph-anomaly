@@ -1,0 +1,8 @@
+{
+  "gpu_model_seed_jobs": 60,
+  "total_trials": 2325000,
+  "summary_rows": 11625,
+  "result_checksums_verified": true,
+  "summary_means_recomputed": true,
+  "uncertainty": "SD across 10 training-seed means after averaging 5 crossed splits and 200 draws; conditional on fixed graph and these splits."
+}

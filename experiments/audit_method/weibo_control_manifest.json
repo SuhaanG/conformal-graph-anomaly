@@ -1,0 +1,31 @@
+{
+  "nodes": 8405,
+  "anomalies": 347,
+  "undirected_edges": 377271,
+  "seconds": 104.88224267959595,
+  "protocol_sha256": "a5369ba906c3bab5b9f50eb436679875aa9614f10d8f27c71fbd5884e92d91fe",
+  "files": {
+    "weibo_graph.npz": "32d3aa235fd7748f991567240228da271c8b72429b57e85a6ced91c91024c0ba",
+    "weibo_control_diagnostics.csv": "8d207191e46f34f108d8ad4c9383c27332f5dd805572d6f1eed511ae1466328b",
+    "weibo_hgb_attributes_scores_0.npz": "6f23028bf36568e162bfc62226d2f93e5a1ff621f63a62b4b008bdd15f8fb1f5",
+    "weibo_hgb_attributes_scores_1.npz": "a23d0414ef552e4052eecab8d6dd8f2738d9cd44586369e347293d05d959974e",
+    "weibo_hgb_attributes_scores_2.npz": "b0da6be4f384630fd40e9c3a6381ec09977224903e810c81b0183a3a8032fbc5",
+    "weibo_hgb_attributes_scores_3.npz": "87094c1c7d2fd48e3723e2fd8c3732aab3ccb9fdf985a703e051c92a906b6ff3",
+    "weibo_hgb_attributes_scores_4.npz": "0fbdf26810cf723892c4dc79741143f29cb8b88e80d6cbd15f2c2245669787a1",
+    "weibo_hgb_attributes_scores_5.npz": "44b3c27ced2021aec52de224b4a2409674de46d0447a02bdc9e977ad431a52e7",
+    "weibo_hgb_attributes_scores_6.npz": "45252a40d45ad879857d1d92edd33c285479ee22f1d53830d2f85dfe9a3723f3",
+    "weibo_hgb_attributes_scores_7.npz": "7298ec92d28cc239be4889574965e14be18256049cf97e1a7afa4664711e6097",
+    "weibo_hgb_attributes_scores_8.npz": "6e7448614502a8bef366bb96166e5ba07137e7181ead81ec0d4a2c1deeb857e9",
+    "weibo_hgb_attributes_scores_9.npz": "41f7e41f0b2a4f73c9a5b6b01e20ccae9218b9670dc20e3daca9547299262d28",
+    "weibo_hgb_graph_features_scores_0.npz": "7757902a110b242dd8217a699b42230a03ca917bf5ae3ac967f1cfc734e8d25e",
+    "weibo_hgb_graph_features_scores_1.npz": "e3697ba5d693046570111d11b30419e199e0948ef2138ba0edfd0b2135201924",
+    "weibo_hgb_graph_features_scores_2.npz": "1cf0fa2c510ce9cec39643c4c71b82e7cd48ebe37d750a636e58040869b9b970",
+    "weibo_hgb_graph_features_scores_3.npz": "7c81edccadaaa7718a0d1da7ca1539ba247b3d8615ffa6e0d62317282de76e2b",
+    "weibo_hgb_graph_features_scores_4.npz": "81a0a00800af30b9680119358883ab168f5c87a11438bfda3bef1ce7ad5cf5a0",
+    "weibo_hgb_graph_features_scores_5.npz": "6fda4f3bbb6b60c9378ad32e89366f14bee3ac91a9c439625afe2883fb8ff68c",
+    "weibo_hgb_graph_features_scores_6.npz": "25f4a3b92a98f3d23abf33502130cb9896830df85cdca00a67c64ed524ca2831",
+    "weibo_hgb_graph_features_scores_7.npz": "b32d3cbad960f202fabf2b9fc29d6c8e65424a94654adb3922590fccee837af2",
+    "weibo_hgb_graph_features_scores_8.npz": "7fc654c4d72c2ce53ae2664a3ec3c86d77e38fe5d934ab8fabca12e0c8900551",
+    "weibo_hgb_graph_features_scores_9.npz": "7bc045ddd7fc23f75365213f063b4f42108698c6f36d3d1e85c4abd20d69bfb2"
+  }
+}

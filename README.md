@@ -15,6 +15,11 @@ experiments. Some historical rows used an invalid Amazon label convention or
 other superseded protocols and are not evidence for the current conclusions.
 The script/table mapping below describes those historical experiments.
 
+The newer experiment source, protocols, compact manifests, and summary diagnostics
+are also collected under `experiments/` for collaborators. Large downloaded datasets,
+model score arrays, and generated trial tables remain local and are described by the
+provenance files in that bundle.
+
 ## Layout
 
 ```

@@ -1,0 +1,23 @@
+{
+  "results\\published\\calibration_strategy_amazon_dominant_pygod.csv": "73a83421cc86be501593e701501f68db850706231a7c9ab71f4abfd8f67e8ba9",
+  "results\\published\\calibration_strategy_amazon_gae.csv": "aadaae441ce946723d3ac348d49f43c6ecdcb9db91ed470753df94fb2fab19b4",
+  "results\\published\\calibration_strategy_reddit_dominant_pygod.csv": "afd22bf0be9fca349a43488d6c87de6771a7ce009de2024c3019745b1788d394",
+  "results\\published\\calibration_strategy_reddit_gae.csv": "f24f365a77c6906cdabd2a46d5311c5f0b0a5248cf47abcfe8eb6acd35c32da8",
+  "results\\published\\calibration_strategy_tolokers_dominant_pygod.csv": "0791e1fde18152999a58609976b6d679fbab83fbcbde82d51d6c09a7cc452281",
+  "results\\published\\calibration_strategy_tolokers_gae.csv": "355722ebf0c8320f41f09fdfeb667d7afcf81ce95b5ca963ec193b6406bc46fd",
+  "results\\published\\calibration_strategy_weibo_dominant_pygod.csv": "e7e43706d9f4db2bde65d2f7b25a66aadcb500dc2c7261b2f44746268584b142",
+  "results\\published\\calibration_strategy_weibo_gae.csv": "f1d411c9a1807052039bc41d1f2b27d0040a3a53f9772a99465650437155d290",
+  "python": "3.14.2",
+  "numpy": "2.5.0",
+  "checks": [
+    "uniform-weight identity",
+    "brute-force weighted ranks including ties",
+    "common-scale invariance",
+    "calibration rank monotonicity",
+    "FDP counterexample",
+    "BH rank floor",
+    "independent binomial-mixture quadrature comparison"
+  ],
+  "seconds": 8.506527662277222,
+  "seed": 20260913
+}

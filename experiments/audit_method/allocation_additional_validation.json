@@ -1,0 +1,133 @@
+{
+  "conditional_block_designs": [
+    {
+      "normal_sizes": [
+        12,
+        16
+      ],
+      "null_test_sizes": [
+        1,
+        1
+      ],
+      "alpha": 0.1,
+      "assignments": 192,
+      "fdr": {
+        "equal_alpha": 0.0,
+        "size_alpha": 0.0,
+        "pooled_stratum": 0.024057539682539677
+      },
+      "bound": 0.028571428571428574
+    },
+    {
+      "normal_sizes": [
+        12,
+        16
+      ],
+      "null_test_sizes": [
+        1,
+        1
+      ],
+      "alpha": 0.3,
+      "assignments": 192,
+      "fdr": {
+        "equal_alpha": 0.034226190476190486,
+        "size_alpha": 0.04761904761904764,
+        "pooled_stratum": 0.08035714285714286
+      },
+      "bound": 0.08571428571428572
+    },
+    {
+      "normal_sizes": [
+        12,
+        16
+      ],
+      "null_test_sizes": [
+        1,
+        1
+      ],
+      "alpha": 0.7,
+      "assignments": 192,
+      "fdr": {
+        "equal_alpha": 0.10267857142857147,
+        "size_alpha": 0.09325396825396821,
+        "pooled_stratum": 0.19258432539682524
+      },
+      "bound": 0.19999999999999998
+    },
+    {
+      "normal_sizes": [
+        9,
+        21
+      ],
+      "null_test_sizes": [
+        1,
+        2
+      ],
+      "alpha": 0.1,
+      "assignments": 1890,
+      "fdr": {
+        "equal_alpha": 0.0015873015873015873,
+        "size_alpha": 0.0015873015873015873,
+        "pooled_stratum": 0.0015873015873015873
+      },
+      "bound": 0.02727272727272728
+    },
+    {
+      "normal_sizes": [
+        9,
+        21
+      ],
+      "null_test_sizes": [
+        1,
+        2
+      ],
+      "alpha": 0.3,
+      "assignments": 1890,
+      "fdr": {
+        "equal_alpha": 0.035527764416653666,
+        "size_alpha": 0.05170648281759443,
+        "pooled_stratum": 0.07066965955854947
+      },
+      "bound": 0.0818181818181818
+    },
+    {
+      "normal_sizes": [
+        9,
+        21
+      ],
+      "null_test_sizes": [
+        1,
+        2
+      ],
+      "alpha": 0.7,
+      "assignments": 1890,
+      "fdr": {
+        "equal_alpha": 0.09032547699214445,
+        "size_alpha": 0.08965635187857506,
+        "pooled_stratum": 0.18286676286675976
+      },
+      "bound": 0.1909090909090909
+    }
+  ],
+  "assignments": 6246,
+  "false_discovery_events_checked": 6649,
+  "weighted_assignments": 11264,
+  "weighted_thresholds": [
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.2,
+    0.5,
+    0.9
+  ],
+  "weighted_null_cdf": [
+    0.0,
+    0.0,
+    0.0005962752,
+    0.039050640290909065,
+    0.11855598312727268,
+    0.3839086312727308,
+    0.8014009530181828
+  ]
+}

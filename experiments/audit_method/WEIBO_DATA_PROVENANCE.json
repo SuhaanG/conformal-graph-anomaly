@@ -1,0 +1,14 @@
+{
+  "checked": "2026-09-23",
+  "url": "https://raw.githubusercontent.com/pygod-team/data/main/weibo.pt.zip",
+  "raw_member": "weibo.pt",
+  "raw_sha256": "3827dca358a7bab33bef0b494db74e22642aad779c15da764d9ccec9806ce46c",
+  "fresh_download_identical_to_local": true,
+  "raw_label_counts": {
+    "0": 8058,
+    "1": 347
+  },
+  "cached_labels_equal_raw_binary_labels": true,
+  "upstream_readme_outlier_count": 868,
+  "resolution": "Use actual distributed binary labels; disclose the inconsistent descriptive table."
+}

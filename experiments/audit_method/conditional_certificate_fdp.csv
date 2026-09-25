@@ -1,0 +1,7 @@
+dataset,model,budget,method,mean,max,count
+amazon,hgb_attributes,250,uniform_candidates,0.022315403475319618,0.0388059701492537,528
+amazon,hgb_attributes,500,score_strata,0.035860655737704875,0.0737704918032786,80
+amazon,hgb_attributes,500,uniform_candidates,0.020421083222676637,0.0458015267175572,1615
+amazon,hgb_graph_features,250,uniform_candidates,0.023873075681977378,0.0337423312883435,525
+amazon,hgb_graph_features,500,score_strata,0.03179190751445083,0.0737704918032786,173
+amazon,hgb_graph_features,500,uniform_candidates,0.022023711042678376,0.040590405904059,1540

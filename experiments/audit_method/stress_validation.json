@@ -1,0 +1,7 @@
+{
+  "trials": 64000,
+  "maximum_failure_rate": 0.005,
+  "maximum_pointwise_upper95": 0.00846634820551852,
+  "nonvacuous_positive_controls": true,
+  "note": "Confidence limits are pointwise Monte Carlo diagnostics; proof supplies simultaneous candidate validity."
+}

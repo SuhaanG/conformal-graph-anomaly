@@ -1,0 +1,17 @@
+{
+  "exact_coverage_cases": 18600,
+  "max_failure_to_alpha_ratio": 0.9999999999999999,
+  "exhaustive_selection_configurations": 2048,
+  "nonempty_selections": 112,
+  "largest_selection_failure_probability": 0.03571428571428571,
+  "checks": [
+    "exact hypergeometric coverage",
+    "simultaneous adaptive prefix choice",
+    "uniform and stratified audit enumeration",
+    "full and empty audits",
+    "all normal and all anomalous populations",
+    "exact budget allocation",
+    "audited nodes excluded from automatic discoveries"
+  ],
+  "status": "passed"
+}

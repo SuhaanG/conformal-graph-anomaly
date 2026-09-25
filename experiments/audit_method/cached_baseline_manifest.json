@@ -1,0 +1,8 @@
+{
+  "rows": 20500,
+  "training_seeds": 10,
+  "test_splits": 5,
+  "sha256": "1ad7185625457f804e8c63fed7d01c291aa7f165a0eab305bffe47ab6372bb8c",
+  "normalized_formula": "score/log1p(degree+1e-8)",
+  "no_trimming": true
+}

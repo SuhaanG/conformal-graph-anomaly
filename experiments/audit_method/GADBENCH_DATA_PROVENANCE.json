@@ -1,0 +1,300 @@
+{
+  "acquisition": {
+    "retrieved_utc": "2026-09-24T00:13:31.631211+00:00",
+    "repository": "https://github.com/squareRoot3/GADBench",
+    "archive_url": "https://drive.google.com/file/d/1txzXrzwBBAOEATXmfKzMUUKaXh6PJeR1/view?usp=sharing",
+    "download_url": "https://drive.usercontent.google.com/download?id=1txzXrzwBBAOEATXmfKzMUUKaXh6PJeR1&export=download&confirm=t",
+    "archive_bytes": 757193110,
+    "last_modified": "Wed, 23 Aug 2023 15:55:57 GMT",
+    "acquisition": "HTTP range extraction of two members only; whole archive not downloaded or hashed",
+    "archive_tail_sha256": "002f827deee351d6f1c55ac473c5b4c2cc942a2dad355fc5d13b42feee99f51f",
+    "members": {
+      "weibo": {
+        "zip_member": "datasets/weibo",
+        "bytes": 24017643,
+        "compressed_bytes": 13436031,
+        "compressed_range": [
+          732584933,
+          746020963
+        ],
+        "crc32": "dcd1cb8c",
+        "sha256": "111402a2cb3b6a10ec586e96122da809d62bfe3617add07cb006de53fc109f05",
+        "compressed_sha256": "36f2c8be39ac9479f389d85e76757cf38130d497978fcb6778a347f7e15c7d3a"
+      },
+      "tfinance": {
+        "zip_member": "datasets/tfinance",
+        "bytes": 1023882459,
+        "compressed_bytes": 72455701,
+        "compressed_range": [
+          87292833,
+          159748533
+        ],
+        "crc32": "a7d6d827",
+        "sha256": "8f3b05272703220bb3248b0caac92e917c7524704094c02f802b400026ed1d38",
+        "compressed_sha256": "b79811b979671dbc8ede0313602f709c59d4855098c256fb3b069a1f76b1a96c"
+      }
+    }
+  },
+  "upstream_revision": {
+    "repository": "https://github.com/squareRoot3/GADBench",
+    "commit": "f9aa021ce9b6c6580427fb633b596843be76ddc6",
+    "commit_url": "https://github.com/squareRoot3/GADBench/commit/f9aa021ce9b6c6580427fb633b596843be76ddc6",
+    "date": "2024-06-25T09:33:00Z",
+    "files": {
+      "gadbench_utils.py": {
+        "url": "https://raw.githubusercontent.com/squareRoot3/GADBench/f9aa021ce9b6c6580427fb633b596843be76ddc6/utils.py"
+      },
+      "gadbench_detector.py": {
+        "url": "https://raw.githubusercontent.com/squareRoot3/GADBench/f9aa021ce9b6c6580427fb633b596843be76ddc6/models/detector.py"
+      },
+      "gadbench_readme.md": {
+        "url": "https://raw.githubusercontent.com/squareRoot3/GADBench/f9aa021ce9b6c6580427fb633b596843be76ddc6/readme.md"
+      },
+      "gadbench_preprocess.ipynb": {
+        "url": "https://raw.githubusercontent.com/squareRoot3/GADBench/f9aa021ce9b6c6580427fb633b596843be76ddc6/preprocess.ipynb"
+      }
+    },
+    "pinned_source_bytes_verified": true
+  },
+  "protocol_sha256": "0fd98777b26321807b531ccf5b4b9d104d35d9a041c0d67c68a4ca5d6c365092",
+  "script_sha256": "8bcac6c9c4453da89622b482db6614afe7b4d8b0e598a26f7b4eb91b2fd9cdf1",
+  "created_utc": "2026-09-24T00:18:43.357033+00:00",
+  "versions": {
+    "python": "3.14.2 (tags/v3.14.2:df79316, Dec  5 2025, 17:18:21) [MSC v.1944 64 bit (AMD64)]",
+    "dgl": "1.1.2",
+    "numpy": "2.5.0",
+    "scipy": "1.18.0",
+    "torch": "2.13.0+cpu"
+  },
+  "runtime_note": "Official DGL 1.1.2 cp311 Windows wheel extracted locally; ctypes graph-I/O tested under existing Python 3.14.2. No environment packages installed or replaced.",
+  "dgl_wheel_sha256": "98f2f1e189500d6e2c44e71aaa5e2a4efef8f36c0241c8d7c3c2271c3d72226b",
+  "dgl_wheel_url": "https://files.pythonhosted.org/packages/5a/ff/2ff1e38194aa66ca2d7393415ad11eccbf8d9ea5e74dfaaa2c145d34a240/dgl-1.1.2-cp311-cp311-win_amd64.whl",
+  "source_code": {
+    "gadbench_detector.py": "4f895e031969dc0700047b3b091354a8730a46d868856f88027e842dc420886b",
+    "gadbench_preprocess.ipynb": "7bb7e67d3eff014ee0a8087ffcd1c3d1082898f0dfbdaf3679a5b51f55ab605c",
+    "gadbench_readme.md": "02847619e7997946562ce64fd71d4d8c9099511fefae03a639d87136a06fe6b0",
+    "gadbench_utils.py": "7c1c7347890a4c6fdefdd6b4a02b2af81a08638025ce756e89ebb74d000a9f97"
+  },
+  "label_semantics": "GADBench utils.Dataset loads the graph unchanged; models/detector.py takes ndata[label] directly and evaluates class-1 probabilities as anomalies. No binary inversion, thresholding, argmax, or recoding applied.",
+  "preprocessing": "Keep distributed features and node order unchanged. Sparse boolean adjacency; union with transpose, binarize, remove loops. Ignore distributed train/val/test masks. No training or evaluation.",
+  "original_BWGNN_fallback_used": false,
+  "datasets": {
+    "weibo": {
+      "nodes": 8405,
+      "feature_shape": [
+        8405,
+        400
+      ],
+      "feature_dtype": "float32",
+      "label_dtype": "int64",
+      "label_counts": {
+        "0": 7537,
+        "1": 868
+      },
+      "labels_unchanged": true,
+      "features_unchanged": true,
+      "node_order_unchanged": true,
+      "features_all_finite": true,
+      "raw_directed_edge_entries": 416368,
+      "raw_self_loop_entries": 8405,
+      "raw_unique_directed_edges": 416368,
+      "raw_duplicate_entries": 0,
+      "processed_directed_csr_entries": 754542,
+      "processed_undirected_edges": 377271,
+      "processed_self_loops": 0,
+      "processed_is_symmetric": true,
+      "isolated_nodes": 0,
+      "node_fields": {
+        "feature": {
+          "shape": [
+            8405,
+            400
+          ],
+          "dtype": "torch.float32"
+        },
+        "label": {
+          "shape": [
+            8405
+          ],
+          "dtype": "torch.int64"
+        },
+        "train_masks": {
+          "shape": [
+            8405,
+            20
+          ],
+          "dtype": "torch.uint8"
+        },
+        "val_masks": {
+          "shape": [
+            8405,
+            20
+          ],
+          "dtype": "torch.uint8"
+        },
+        "test_masks": {
+          "shape": [
+            8405,
+            20
+          ],
+          "dtype": "torch.uint8"
+        }
+      },
+      "edge_fields": {
+        "count": {
+          "shape": [
+            416368
+          ],
+          "dtype": "torch.int64"
+        }
+      },
+      "output": "paper\\audit_method\\weibo_gadbench_graph.npz",
+      "output_bytes": 13954308,
+      "output_sha256": "876ef9da86b9b717c2a33985cfbb6138a275f07d2bb4da669991f1a5393f7e20",
+      "pygod_comparison": {
+        "pygod_url": "https://raw.githubusercontent.com/pygod-team/data/main/weibo.pt.zip",
+        "pygod_raw_sha256": "3827dca358a7bab33bef0b494db74e22642aad779c15da764d9ccec9806ce46c",
+        "pygod_raw_label_counts": {
+          "0": 8058,
+          "1": 347
+        },
+        "pygod_cached_sha256": "32d3aa235fd7748f991567240228da271c8b72429b57e85a6ced91c91024c0ba",
+        "pygod_cache_labels_equal_raw": true,
+        "raw_features_exactly_equal": true,
+        "unique_feature_rows": 8404,
+        "duplicate_feature_node_indices": [
+          130,
+          4108
+        ],
+        "duplicate_feature_neighbor_sets": {
+          "130": [
+            442,
+            1225,
+            1734,
+            2087,
+            2129,
+            2165,
+            2793,
+            3503,
+            3626,
+            4108,
+            4194,
+            4847,
+            5329,
+            5364,
+            5508,
+            5728,
+            6598,
+            7207,
+            7892,
+            8389
+          ],
+          "4108": [
+            130,
+            442,
+            1225,
+            1734,
+            2087,
+            2129,
+            2165,
+            2793,
+            3503,
+            3626,
+            4194,
+            4847,
+            5329,
+            5364,
+            5508,
+            5728,
+            6598,
+            7207,
+            7892,
+            8389
+          ]
+        },
+        "normalized_adjacency_equal": true,
+        "cache_adjacency_equal": true,
+        "cache_features_equal_standardized_raw": true,
+        "gadbench_features_equal_cache": false,
+        "same_node_order_established": false,
+        "alignment_evidence": "Node identity/order not established; do not compare labels pointwise.",
+        "feature_processing_difference": "GADBench output preserves distributed raw float32 features; existing PyGOD cache uses per-column z-scores.",
+        "README_weibo_anomalies": 868,
+        "caveat": "Separate source sensitivity, not independent graph replication. Do not overwrite or pool PyGOD results."
+      }
+    },
+    "tfinance": {
+      "nodes": 39357,
+      "feature_shape": [
+        39357,
+        10
+      ],
+      "feature_dtype": "float32",
+      "label_dtype": "int64",
+      "label_counts": {
+        "0": 37554,
+        "1": 1803
+      },
+      "labels_unchanged": true,
+      "features_unchanged": true,
+      "node_order_unchanged": true,
+      "features_all_finite": true,
+      "raw_directed_edge_entries": 42484443,
+      "raw_self_loop_entries": 39357,
+      "raw_unique_directed_edges": 42484443,
+      "raw_duplicate_entries": 0,
+      "processed_directed_csr_entries": 42445086,
+      "processed_undirected_edges": 21222543,
+      "processed_self_loops": 0,
+      "processed_is_symmetric": true,
+      "isolated_nodes": 0,
+      "node_fields": {
+        "feature": {
+          "shape": [
+            39357,
+            10
+          ],
+          "dtype": "torch.float32"
+        },
+        "label": {
+          "shape": [
+            39357
+          ],
+          "dtype": "torch.int64"
+        },
+        "train_masks": {
+          "shape": [
+            39357,
+            20
+          ],
+          "dtype": "torch.uint8"
+        },
+        "val_masks": {
+          "shape": [
+            39357,
+            20
+          ],
+          "dtype": "torch.uint8"
+        },
+        "test_masks": {
+          "shape": [
+            39357,
+            20
+          ],
+          "dtype": "torch.uint8"
+        }
+      },
+      "edge_fields": {
+        "count": {
+          "shape": [
+            42484443
+          ],
+          "dtype": "torch.int64"
+        }
+      },
+      "output": "paper\\audit_method\\tfinance_graph.npz",
+      "output_bytes": 74282782,
+      "output_sha256": "54deb060685377116df4f7ab88a9b34789d4d7254005799c63ff318089ca4ff6"
+    }
+  }
+}

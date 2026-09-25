@@ -1,0 +1,65 @@
+{
+  "datasets": [
+    "amazon",
+    "tfinance",
+    "tolokers",
+    "weibo",
+    "weibo_gadbench"
+  ],
+  "amazon_half_labels_zero_exposure": {
+    "stratified_fdp": 0.04212027411950959,
+    "stratified_power": 0.6509636369899918,
+    "full_fdp": 0.08855822731673388,
+    "full_power": 0.7793593359312982
+  },
+  "amazon_paired20": [
+    {
+      "dataset": "amazon",
+      "model": "hgb_attributes",
+      "label_fraction": 0.5,
+      "removed": 0.2,
+      "mean": 0.030986237913682275,
+      "std": 0.011905329898398813,
+      "count": 10,
+      "lower": 0.022469677953003656,
+      "upper": 0.039502797874360895,
+      "metric": "fdp"
+    },
+    {
+      "dataset": "amazon",
+      "model": "hgb_graph_features",
+      "label_fraction": 0.5,
+      "removed": 0.2,
+      "mean": 0.053671933275395954,
+      "std": 0.021158439762177305,
+      "count": 10,
+      "lower": 0.038536097271958114,
+      "upper": 0.0688077692788338,
+      "metric": "fdp"
+    },
+    {
+      "dataset": "amazon",
+      "model": "hgb_attributes",
+      "label_fraction": 0.5,
+      "removed": 0.2,
+      "mean": 0.021610519546706487,
+      "std": 0.01168998626917461,
+      "count": 10,
+      "lower": 0.013248007138350185,
+      "upper": 0.02997303195506279,
+      "metric": "power"
+    },
+    {
+      "dataset": "amazon",
+      "model": "hgb_graph_features",
+      "label_fraction": 0.5,
+      "removed": 0.2,
+      "mean": 0.032624689886243965,
+      "std": 0.013961910338524116,
+      "count": 10,
+      "lower": 0.02263694090503752,
+      "upper": 0.04261243886745041,
+      "metric": "power"
+    }
+  ]
+}

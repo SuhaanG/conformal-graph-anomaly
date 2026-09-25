@@ -1,0 +1,31 @@
+{
+  "date": "2026-09-24",
+  "aistats_overleaf_source.zip": {
+    "files": 45,
+    "sha256": "d27d444f9ad712a75c51c0c6b7a5ddb2efba528de97bc2f57864cad5f445ace2",
+    "bytes": 343146,
+    "hashes": "passed",
+    "targeted_identity_scan": "passed"
+  },
+  "aistats_reproducibility.zip": {
+    "files": 611,
+    "sha256": "4e5dfed5727407aafc197551f577e40acf745c9315066a34a84e596887aca4ca",
+    "bytes": 176719436,
+    "hashes": "passed",
+    "targeted_identity_scan": "passed"
+  },
+  "main_text_pages": 7,
+  "total_pages": 44,
+  "source_rebuild": "passed; no unresolved citations or references",
+  "page_size": "US Letter",
+  "style": "official unmodified AISTATS 2027",
+  "overleaf": "Synchronized 2026-09-24: 45 source/figure uploads completed; normalized main source fingerprint matches; cloud PDF 44 pages, Errors 0 and Warnings 0.",
+  "remaining_typesetting_note": "Style-level 5.1225pt empty-box warning at title/abstract boundary; no visible text overflow.",
+  "allocation_acquisition": {
+    "evaluations": 135000,
+    "previous_outcomes_reproduced": 5400,
+    "reaggregation": "passed",
+    "nonvacuous_finite_design_checks": "passed"
+  },
+  "pdf_sha256": "0f6c58a6be761bea22841634fc9ff01ccb27fd5ce4c18132add5444832535ba8"
+}

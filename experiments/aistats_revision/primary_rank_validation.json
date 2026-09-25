@@ -1,0 +1,13 @@
+{
+  "conditions": 600,
+  "fresh_calibration_draws": 300000,
+  "maximum_absolute_error": 0.0007208629697375186,
+  "max_absolute_z": 2.976420592626359,
+  "nonconstant_conditions": 300,
+  "number_above_3_mcse": 0,
+  "constant_conditions_exact": true,
+  "csv_sha256": "7e0ad3bd5a130bf133bb8846c1b06412475f6928b49fc9b1c843c8e8ffb785c6",
+  "master_seed": 20260921,
+  "selection": "all primary untrimmed oracle/random learned-detector conditions",
+  "interpretation": "MCSE is across calibration draws conditional on fixed scores and test identities; no independence of graph nodes is assumed."
+}

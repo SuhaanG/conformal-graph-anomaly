@@ -1,0 +1,9 @@
+dataset,detector,mean_fdp_difference,sd,positive_seeds
+amazon,dominant_pygod,0.7853685889409249,0.012965689119556938,5
+amazon,gae,0.07510577971646674,0.10579411654786053,2
+reddit,dominant_pygod,0.0,0.0,0
+reddit,gae,0.0,0.0,0
+tolokers,dominant_pygod,0.366196797785432,0.033869243807706464,5
+tolokers,gae,0.0,0.0,0
+weibo,dominant_pygod,0.15128205128205127,0.20956735119694925,2
+weibo,gae,0.1941880046667281,0.2145209312382721,4

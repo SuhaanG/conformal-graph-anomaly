@@ -1,0 +1,22 @@
+{
+  "rows_reaggregated": 135000,
+  "amazon_attribute_power": {
+    "equal": 0.5813904460128032,
+    "size": 0.2767770851321632,
+    "pooled": 0.49173161610294525
+  },
+  "tfinance_moderate_graph": {
+    "biased": {
+      "fdp": 0.15378145573456167,
+      "power": 0.8182976516967374
+    },
+    "stratified": {
+      "fdp": 0.09222857556455115,
+      "power": 0.6403223988902834
+    },
+    "weighted_bh": {
+      "fdp": 0.09503317438540639,
+      "power": 0.7854128412216352
+    }
+  }
+}

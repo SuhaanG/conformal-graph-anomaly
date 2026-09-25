@@ -1,0 +1,12 @@
+{
+  "exact_design_cases": 32,
+  "exact_assignments": 3904,
+  "marginal_threshold_checks": 640,
+  "max_fdr_minus_bound": {
+    "equal_alpha": -0.03333333333333333,
+    "size_alpha": -0.03333333333333333,
+    "pooled_stratum": -0.03333333333333333,
+    "weighted_by": -0.03333333333333333
+  },
+  "weighted_direct_checks": 200
+}

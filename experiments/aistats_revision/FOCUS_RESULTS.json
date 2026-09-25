@@ -1,0 +1,21 @@
+{
+  "amazon_half_labels_drop20_attributes": {
+    "fdp_mean": 0.1191732716597716,
+    "power_mean": 0.7991871600688584,
+    "n_calib_mean": 2115.54
+  },
+  "matched_random": {
+    "fdp_mean": 0.0881870337460894,
+    "power_mean": 0.7775766405221518
+  },
+  "graph_features": {
+    "fdp_mean": 0.1447513728672712,
+    "power_mean": 0.82047587697552
+  },
+  "graph_random": {
+    "fdp_mean": 0.0910794395918752,
+    "power_mean": 0.787851187089276
+  },
+  "weibo_max_power": 0.8381941391941392,
+  "tolokers_max_power": 0.022550083203102
+}

@@ -1,0 +1,12 @@
+{
+  "master_seed": 20260920,
+  "repetitions_per_cell": 500,
+  "unique_graphs": 2500,
+  "method_evaluations": 42500,
+  "seconds": 119.56330943107605,
+  "nodes": 1200,
+  "anomaly_fraction": 0.1,
+  "all_null_control": true,
+  "nominal_alpha": 0.1,
+  "score_type": "specified analytic scorers; no trained GNN claim"
+}

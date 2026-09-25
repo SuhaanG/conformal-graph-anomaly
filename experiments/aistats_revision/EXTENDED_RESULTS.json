@@ -1,0 +1,38 @@
+{
+  "tfinance": {
+    "hgb_attributes": {
+      "auroc": 0.940261819239842,
+      "average_precision": 0.7943877392399938,
+      "exposure_fdp": 0.1265175707232431,
+      "random_fdp": 0.0927800957686225,
+      "exposure_power": 0.6682239788004127,
+      "random_power": 0.6501177795057143
+    },
+    "hgb_graph_features": {
+      "auroc": 0.9620029289298303,
+      "average_precision": 0.8797221405707971,
+      "exposure_fdp": 0.1912742777460256,
+      "random_fdp": 0.0948079780287255,
+      "exposure_power": 0.8299195009849065,
+      "random_power": 0.7886106702690212
+    }
+  },
+  "weibo_gadbench": {
+    "hgb_attributes": {
+      "auroc": 0.9824250211172153,
+      "average_precision": 0.8991238576235488,
+      "exposure_fdp": 0.184380156911799,
+      "random_fdp": 0.0943127808710456,
+      "exposure_power": 0.782840578220565,
+      "random_power": 0.6634646938072039
+    },
+    "hgb_graph_features": {
+      "auroc": 0.9933169779953548,
+      "average_precision": 0.9540414020288764,
+      "exposure_fdp": 0.2863211237963243,
+      "random_fdp": 0.0909294672809584,
+      "exposure_power": 0.9733785880362368,
+      "random_power": 0.8440138445507867
+    }
+  }
+}
