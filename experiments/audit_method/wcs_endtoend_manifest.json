@@ -1,0 +1,11 @@
+{
+  "rows": 10800,
+  "seconds": 5995.033672094345,
+  "protocol_sha256": "306ad612e1794db9064427cb543566df0426efc91a3005a9669d71d26d29e88b",
+  "script_sha256": "40764c6f7f16e312387758ecf022dfe5a623d8d71085e54c26ccb3865138afc4",
+  "inputs": {
+    "amazon_graph.npz": "13c2f359f2b9460bd7ca4edfdbbba464070fd99aa4baa0736aadd4bb9112313f",
+    "tfinance_graph.npz": "54deb060685377116df4f7ab88a9b34789d4d7254005799c63ff318089ca4ff6",
+    "weibo_gadbench_graph.npz": "876ef9da86b9b717c2a33985cfbb6138a275f07d2bb4da669991f1a5393f7e20"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "exact_cases": 96,
+  "exact_states": 40176,
+  "max_fdr_minus_bound": {
+    "wcs_det_homog": -0.092347,
+    "wcs_det_determ": -0.0969203125
+  },
+  "weighted_bh_max_fdr_minus_bound": -0.09007918749999999,
+  "weighted_bh_cases_above": 0
+}
