@@ -1,6 +1,7 @@
-% DRAFT (2026-09-25): design-based FDR control for WCS under known-propensity acquisition.
-% Not yet \input into aistats.tex. Revised 2026-09-26 after an independent line-by-line check.
-\section{WEIGHTED CONFORMALIZED SELECTION UNDER A KNOWN ACQUISITION DESIGN}
+% Design-based FDR control for WCS under known-propensity acquisition.
+% Revised 2026-09-26 after an independent line-by-line check; wrappers changed 2026-09-29
+% so that the statements live in Section 3 of the main text and this appendix holds the proofs.
+\section{PROOFS FOR THE ACQUISITION DESIGN}
 \label{app:wcsdesign}
 
 \paragraph{Design.}
@@ -17,10 +18,7 @@ p_l^{(j)}=\frac{\sum_{i\in\calset}w(i)\ind\{s(i)>s(l)\}+w(j)\ind\{s(j)>s(l)\}}{\
 \]
 and let $S_j$ be the number of BH rejections at level $\alpha$ among $(p_l^{(j)})_{l\in\testset}$. Since $p_j^{(j)}=0\le\alpha/m$, BH always rejects at least one coordinate, so $1\le S_j\le m$. The first-stage set is $\mathcal R_1=\{j:p_j\le\alpha S_j/m\}$. For $\xi\in(0,1]$, let $r^*(\xi)=\max\{r\in\{0,1,\ldots,m\}:|\{j\in\mathcal R_1:\xi S_j\le r\}|\ge r\}$ and $\mathcal R(\xi)=\{j\in\mathcal R_1:\xi S_j\le r^*(\xi)\}$. Deterministic pruning reports $\mathcal R(1)$; homogeneous pruning reports $\mathcal R(\xi)$ for one $\xi\sim{\rm Unif}(0,1)$ drawn independently of everything else. This is the outlier-detection variant, Algorithm~2 of \citet{jin2023algorithm} (arXiv v2; the general selection version is its Algorithm~1), with weights $1/\rho$. Moreover $|\mathcal R(\xi)|=r^*(\xi)$: write $c(r)=|\{j\in\mathcal R_1:\xi S_j\le r\}|$, which is nondecreasing in $r$ and at most $m$. If $c(r^*)>r^*$, then $c(c(r^*))\ge c(r^*)$, so $r=c(r^*)\in\{0,\ldots,m\}$ also qualifies, contradicting maximality.
 
-\begin{proposition}[Design-based FDR control]
-\label{prop:wcsdesign}
-Under the design above, both deterministic and homogeneous pruning satisfy $\E[\FDP\mid\mathcal F]\le\alpha m_0/m\le\alpha$.
-\end{proposition}
+\noindent\textbf{Theorem~\ref{thm:design} (restated).} Under the design above, both deterministic and homogeneous pruning satisfy $\E[\FDP\mid\mathcal F]\le\alpha m_0/m\le\alpha$. We first prove this for deterministic $p$-values and then extend it to randomized $p$-values.
 
 \begin{proof}
 \emph{Positions.} Order $\testset_0$ by an independent uniform permutation, and write $\pi_k$ for the node in position $k=1,\ldots,m_0$. Then $\FDP=\sum_{k=1}^{m_0}\ind\{\pi_k\in\mathcal R\}/(|\mathcal R|\vee1)$.
@@ -61,7 +59,7 @@ Averaging over $\mathcal E_k$ and summing over the $m_0$ positions gives the cla
 \end{proof}
 
 \paragraph{Scope.}
-The argument uses only the randomization of roles and acquisition, so it permits arbitrary graph dependence among scores and labels once $\mathcal F$ is fixed. It is an adaptation of the weighted-exchangeability proof of \citet{jin2026weighted}, which assumes independent draws under covariate shift, to a finite-population design. It requires propensities that are known, positive, and fixed before normal roles are assigned. It does not cover estimated propensities, acquisition that adapts to earlier labels, or a filter applied after acquisition. Exact enumeration over small finite populations, integrating homogeneous pruning over $\xi$ exactly, found no case above $\alpha m_0/m$ (Appendix~\ref{app:wcsdesign}, \texttt{wcs\_validation.json}); this checks the implementation and does not replace the proof.
+The argument uses only the randomization of roles and acquisition, so it permits arbitrary graph dependence among scores and labels once $\mathcal F$ is fixed. It is an adaptation of the weighted-exchangeability proof of \citet{jin2026weighted}, which assumes independent draws under covariate shift, to a finite-population design. It requires propensities that are known, positive, and fixed before normal roles are assigned. It does not cover estimated propensities, acquisition that adapts to earlier labels, or a filter applied after acquisition. Exact enumeration over small finite populations, integrating homogeneous pruning over $\xi$ exactly, found no case above $\alpha m_0/m$ (\texttt{wcs\_validation.json} in the supplement); this checks the implementation and does not replace the proof.
 
 \paragraph{Randomized weighted p-values.}
 Replace the test-point term by an independent uniform multiple: with $U_j\sim{\rm Unif}(0,1)$ drawn independently of the design and of $\xi$,
@@ -72,19 +70,16 @@ keeping the auxiliary values $p_l^{(j)}$, and hence every $S_j$, unchanged. In t
 \[
 \Prb(\tilde p_{\pi_k}\le t\mid\mathcal F,\mathcal E_k)=\sum_r a_r\min\Bigl\{1,\frac{(t-F_{r-1})_+}{a_r}\Bigr\}=\sum_r\min\{a_r,(t-F_{r-1})_+\}=t,\qquad t\in[0,1].
 \]
-The rest of the proof is unchanged, so Proposition~\ref{prop:wcsdesign} holds for randomized WCS with either pruning rule. Individual decisions then depend on the auxiliary coins $U_j$.
+The rest of the proof is unchanged, so Theorem~\ref{thm:design} holds for randomized WCS with either pruning rule. Individual decisions then depend on the auxiliary coins $U_j$.
 
-\paragraph{Scorers trained on acquired labels.}
-The theorem conditions on fixed scores. The end-to-end experiments instead fit the scorer on part of the acquired labels, so the swap law is proved directly for that design rather than by re-invoking the theorem. Fix $f\in[0,1)$ and the anomaly-side roles. After the null tests are chosen, each non-test normal is independently unused with probability $1-\rho(v)$, sent to training with probability $f\rho(v)$, or sent to calibration with probability $(1-f)\rho(v)$. Scores may depend on the training set $\mathcal B$, a fixed prior panel, fixed unlabeled graph information and independent model randomness, but on nothing else. Condition on these, on the tie marks, the unused set, the other null-test positions and the unordered set $\mathcal S=\calset\cup\{\pi_k\}$. For $j\in\mathcal S$ the configuration with $\pi_k=j$ has probability proportional to
+\paragraph{Proof of Corollary~\ref{cor:trained}.}
+Theorem~\ref{thm:design} conditions on fixed scores. The end-to-end experiments instead fit the scorer on part of the acquired labels, so the swap law is proved directly for that design rather than by re-invoking the theorem. Fix $f\in[0,1)$ and the anomaly-side roles. After the null tests are chosen, each non-test normal is independently unused with probability $1-\rho(v)$, sent to training with probability $f\rho(v)$, or sent to calibration with probability $(1-f)\rho(v)$. Scores may depend on the training set $\mathcal B$, a fixed prior panel, fixed unlabeled graph information and independent model randomness, but on nothing else. Condition on these, on the tie marks, the unused set, the other null-test positions and the unordered set $\mathcal S=\calset\cup\{\pi_k\}$. For $j\in\mathcal S$ the configuration with $\pi_k=j$ has probability proportional to
 \[
 \prod_{b\in\mathcal B}f\rho(b)\prod_{u\in\mathcal U}\{1-\rho(u)\}\prod_{i\in\mathcal S\setminus\{j\}}(1-f)\rho(i),
 \]
 in which the only factor varying with $j$ is $1/\{(1-f)\rho(j)\}$. The common $1/(1-f)$ cancels, so $\Prb(\pi_k=j\mid\cdot)=w(j)/\sum_{i\in\mathcal S}w(i)$ with the same $w=1/\rho$. The scores are unchanged under the swap because $\mathcal B$ is fixed, so the invariance, super-uniformity (or exact uniformity for randomized p-values) and pruning steps apply verbatim, and $\E[\FDP]\le\alpha m_0/m$. With node-dependent training fractions $f(v)$ the weights become proportional to $1/\{\rho(v)(1-f(v))\}$.
 
-\begin{proposition}[Weighted resolution]
-\label{prop:wresolution}
-For deterministic weighted p-values let $f_j=w(j)/\{w(j)+\sum_{i\in\calset}w(i)\}$, the smallest value $p_j$ can take. If $j$ is rejected by weighted BH or by WCS with deterministic pruning, then $|\mathcal R|\ge mf_j/\alpha$; with homogeneous pruning, $|\mathcal R|\ge\xi mf_j/\alpha$. For all three procedures, no test node with $f_j>\alpha$ can be discovered.
-\end{proposition}
+\medskip\noindent\textbf{Proposition~\ref{prop:wresolution} (restated).} For deterministic weighted p-values let $f_j=w(j)/\{w(j)+\sum_{i\in\calset}w(i)\}$, the smallest value $p_j$ can take. If $j$ is rejected by weighted BH or by WCS with deterministic pruning, then $|\mathcal R|\ge mf_j/\alpha$; with homogeneous pruning, $|\mathcal R|\ge\xi mf_j/\alpha$. For all three procedures, no test node with $f_j>\alpha$ can be discovered.
 \begin{proof}
 Weighted BH rejects $j$ only if $f_j\le p_j\le\alpha|\mathcal R|/m$. For WCS, $j\in\mathcal R$ requires $p_j\le\alpha S_j/m$, and pruning gives $S_j\le|\mathcal R|$ (deterministic) or $\xi S_j\le|\mathcal R|$ (homogeneous). For the last claim, WCS rejection requires first-stage membership, so $f_j\le p_j\le\alpha S_j/m\le\alpha$ because $S_j\le m$; for weighted BH, $f_j\le p_j\le\alpha|\mathcal R|/m\le\alpha$.
 \end{proof}

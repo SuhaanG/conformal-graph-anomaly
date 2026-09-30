@@ -76,7 +76,7 @@ def resolution_table(out):
     s=pd.read_csv(A/'wcs_randomized_summary.csv')
     s=s[(s.design=='exposure_80')&(s.model=='hgb_graph_features')].set_index(['dataset','scenario','method'])
     lines=[r'\begin{tabular}{llccccc}',r'\toprule',
-           r'Graph & Bias & Kish ESS & $mf/\alpha$ (sparse) & Anomalies in sparse stratum & WCS power & Rand.\ WCS power\\',r'\midrule']
+           r'Graph & Bias & Kish ESS & $mf/\alpha$ & Anomaly share & WCS (det.\ $p$) & Randomized WCS\\',r'\midrule']
     for ds,name in GRAPHS:
         for scen,sl in [('neutral','None'),('moderate','Moderate'),('severe','Severe')]:
             r=s.loc[(ds,scen,'wcs_homogeneous')];q=s.loc[(ds,scen,'wcs_rand_homogeneous')]
