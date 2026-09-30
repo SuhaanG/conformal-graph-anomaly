@@ -158,6 +158,12 @@ met by homogeneous pruning and failed by deterministic pruning; both are reporte
 The figure and summaries switched from test-set SEs to seed-clustered SEs after the
 audit; the original `fdp_se_testset` column is kept for provenance.
 
+## 6b. Adversarial review changes (2026-09-29)
+
+- Power comparison must be like for like. End-to-end addendum (`WCS_ENDTOEND_ADDENDUM.md`, frozen before the rerun; all 10,800 earlier outcomes reproduced exactly): BH on the same randomized weighted p-values (`weighted_bh_rand`, no guarantee) has mean FDP <= 0.103 (max z +1.79). Randomized WCS power minus it: moderate 0.000 to 0.048 (WCS keeps >= 93%); severe 0.002 to 0.348 (keeps 28% to 98%; T-Finance attr 0.138 vs 0.486, Amazon gaps 0.195/0.216, Weibo both low); smooth 0.017 to 0.136. The gap is from WCS pruning, not the weights. Randomized WCS still beats *deterministic* weighted BH in 13/18 cells. Frozen-score numbers (moderate gap 0.004-0.013, severe up to 0.365) are appendix only. Do not write "matches or exceeds weighted BH" without saying which one.
+- A deterministic filter (Table 1) sets rho = 0 on removed nodes; no reweighting repairs it. The remedy is procedural: down-sample exposed normals with a known probability and weight by 1/rho.
+- Known non-uniform rho arises when the analyst sets it (limited capacity, uneven verification cost); unrecorded operational selection is an open case.
+
 ## 7. Claims not to make
 
 - That WCS is a new method.

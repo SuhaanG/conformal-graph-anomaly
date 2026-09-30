@@ -14,7 +14,8 @@ SCEN=[('moderate','Moderate'),('severe','Severe'),('smooth','Smooth')]
 METHODS=[('wcs_rand_homogeneous','Randomized WCS','#2a78d6','o'),
          ('pooled_reference','Pooled BH (biased labels)','#eb6834','s'),
          ('wcs_homogeneous','WCS (deterministic p)','#1baf7a','^'),
-         ('weighted_bh','Weighted BH (no guarantee)','#eda100','D')]
+         ('weighted_bh','Weighted BH, det. p (no guarantee)','#eda100','D'),
+         ('weighted_bh_rand','Weighted BH, rand. p (no guarantee)','#8a5cc2','v')]
 INK,MUTED,GRID='#0b0b0b','#52514e','#e4e3df'
 T9=2.262157  # t quantile 0.975 with 9 df: ten training seeds are the independent units
 
@@ -26,7 +27,7 @@ def figure(scorer,label,out):
         for r,metric in enumerate(('fdp','power')):
             ax=axes[r,c]
             for k,(m,mlab,col,mk) in enumerate(METHODS):
-                x=np.arange(3)+(k-1.5)*0.16
+                x=np.arange(3)+(k-2)*0.14
                 sub=d[d.method==m].set_index('scenario').loc[[sc for sc,_ in SCEN]]
                 yv=sub[f'{metric}_mean'].values
                 err=T9*sub['fdp_std'].values/np.sqrt(10) if metric=='fdp' else None  # seed-clustered 95% t interval
@@ -45,19 +46,19 @@ def figure(scorer,label,out):
     h,l=axes[0,0].get_legend_handles_labels()
     from matplotlib.lines import Line2D
     h.append(Line2D([],[],color=MUTED,lw=1,ls="--"));l.append("FDR bound α·m₀/m")
-    fig.legend(h,l,loc='lower center',ncol=5,frameon=False,fontsize=8.5,bbox_to_anchor=(.5,-.01))
-    fig.tight_layout(rect=(0,.06,1,1));fig.savefig(out,bbox_inches='tight');fig.savefig(out.with_suffix('.png'),dpi=160,bbox_inches='tight');plt.close(fig)
+    fig.legend(h,l,loc='lower center',ncol=3,frameon=False,fontsize=8.5,bbox_to_anchor=(.5,-.02))
+    fig.tight_layout(rect=(0,.1,1,1));fig.savefig(out,bbox_inches='tight');fig.savefig(out.with_suffix('.png'),dpi=160,bbox_inches='tight');plt.close(fig)
 
 def fmt(r):return f"{r['fdp_mean']:.3f} / {r['power_mean']:.3f}"
 
 def endtoend_table(out):
     s=pd.read_csv(A/'wcs_endtoend_summary.csv').set_index(['dataset','model','scenario','method'])
-    lines=[r'\begin{tabular}{lllcccc}',r'\toprule',
-           r'Graph & Scorer & Bias & Pooled BH & Weighted BH$^\dagger$ & WCS (det.\ $p$) & Randomized WCS\\',r'\midrule']
+    lines=[r'\begin{tabular}{lllccccc}',r'\toprule',
+           r'Graph & Scorer & Bias & Pooled BH & W.\ BH, det.\ $p^\dagger$ & W.\ BH, rand.\ $p^\dagger$ & WCS, det.\ $p$ & WCS, rand.\ $p$\\',r'\midrule']
     for ds,name in GRAPHS:
         for sc,slab in SCORERS:
             for scen,sl in SCEN:
-                cells=[fmt(s.loc[(ds,sc,scen,m)]) for m in ('pooled_reference','weighted_bh','wcs_homogeneous','wcs_rand_homogeneous')]
+                cells=[fmt(s.loc[(ds,sc,scen,m)]) for m in ('pooled_reference','weighted_bh','weighted_bh_rand','wcs_homogeneous','wcs_rand_homogeneous')]
                 lines.append(f"{name} & {'Graph' if 'graph' in sc else 'Attr.'} & {sl} & "+' & '.join(cells)+r'\\')
         lines.append(r'\midrule')
     lines[-1]=r'\bottomrule';lines.append(r'\end{tabular}');out.write_text('\n'.join(lines)+'\n')

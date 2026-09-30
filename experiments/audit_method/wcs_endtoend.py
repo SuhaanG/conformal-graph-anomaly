@@ -87,7 +87,9 @@ def run(datasets):
                             xi=np.random.default_rng(np.random.SeedSequence([2026092510,dsid,seed,split,rep,si,mi])).random()
                             U=np.random.default_rng(np.random.SeedSequence([2026092511,dsid,seed,split,rep,si,mi])).random(m)
                             out={'pooled_reference':bh(pvalues(rank,cal,test)),'weighted_bh':bh(pvalues(rank,cal,test,w)),
-                                 'wcs_homogeneous':wcs_select(rank,cal,test,w,xi)[0],'wcs_rand_homogeneous':wcs_rand(rank,cal,test,w,U,xi)[0]}
+                                 'wcs_homogeneous':wcs_select(rank,cal,test,w,xi)[0]}
+                            out['wcs_rand_homogeneous'],prand=wcs_rand(rank,cal,test,w,U,xi)
+                            out['weighted_bh_rand']=bh(prand)  # WCS_ENDTOEND_ADDENDUM.md
                             auc=roc_auc_score(y[test],s[test])
                             for method,rr in out.items():
                                 ids=test[rr];tp=int(y[ids].sum());kk=len(ids)
@@ -95,14 +97,21 @@ def run(datasets):
                                     fdp=(kk-tp)/max(kk,1),power=tp/npos,discoveries=kk,n_reference=len(cal),n_train_new=len(tr),
                                     train_anomalies=int(y[training].sum()),auroc=auc,bound=ALPHA*(m-int(y[test].sum()))/m))
             print('DONE',ds,seed,round(time.time()-started,1),flush=True)
-    df=pd.DataFrame(rows);df.to_csv(D/'wcs_endtoend_trials.csv.gz',index=False,compression='gzip')
+    df=pd.DataFrame(rows)
+    v1=pd.read_csv(D/'wcs_endtoend_v1_trials.csv.gz');v1=v1[v1.dataset.isin(datasets)]
+    keys=['dataset','model','seed','split','rep','scenario','method']
+    chk=v1.merge(df,on=keys,validate='one_to_one',suffixes=('_old','_new'));assert len(chk)==len(v1)
+    for m in ('fdp','power','discoveries'):assert np.allclose(chk[m+'_old'],chk[m+'_new'],rtol=1e-12,atol=1e-12),m
+    print('existing arms reproduced:',len(chk),flush=True)
+    df.to_csv(D/'wcs_endtoend_trials.csv.gz',index=False,compression='gzip')
     groups=['dataset','model','scenario','method'];metrics=['fdp','power','discoveries','n_reference','n_train_new','train_anomalies','auroc','bound']
     seeds=df.groupby(groups+['seed'])[metrics].mean().reset_index();seeds.to_csv(D/'wcs_endtoend_seeds.csv',index=False)
     sp=df.groupby(groups+['seed','split']).fdp.mean().reset_index()
     se=sp.groupby(groups).fdp.agg(lambda v:v.std(ddof=1)/np.sqrt(len(v))).rename('fdp_se_testset')
     out=seeds.groupby(groups)[metrics].agg(['mean','std']);out.columns=['_'.join(c) for c in out.columns]
     out.join(se).reset_index().to_csv(D/'wcs_endtoend_summary.csv',index=False)
-    report=dict(rows=len(df),seconds=time.time()-started,
+    report=dict(rows=len(df),seconds=time.time()-started,previous_outcomes_reproduced=len(chk),
+                addendum_sha256=hashlib.sha256((D/'WCS_ENDTOEND_ADDENDUM.md').read_bytes()).hexdigest(),
                 protocol_sha256=hashlib.sha256((D/'WCS_ENDTOEND_PROTOCOL.md').read_bytes()).hexdigest(),
                 script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),inputs=inputs)
     (D/'wcs_endtoend_manifest.json').write_text(json.dumps(report,indent=2));print(report['rows'],'rows',flush=True)
