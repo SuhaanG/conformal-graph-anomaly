@@ -84,7 +84,20 @@ def resolution_table(out):
             lines.append(f"{name} & {sl} & {r['kish_ess_mean']:.0f} & {r['need_anom_high_mean']:.0f} & {r['frac_anom_high_mean']:.2f} & {r['power_mean']:.3f} & {q['power_mean']:.3f}"+r'\\')
     lines+= [r'\bottomrule',r'\end{tabular}'];out.write_text('\n'.join(lines)+'\n')
 
+def uniform_table(out):
+    p=pd.read_csv(A/'wcs_uniform_paired.csv').set_index(['dataset','model','scenario'])
+    lines=[r'\begin{tabular}{lllcccc}',r'\toprule',
+           r'Graph & Scorer & Bias & Biased power & Uniform power & Difference [95\% CI] & Uniform FDP'+'\\\\',r'\midrule']
+    for ds,name in GRAPHS:
+        for sc,slab in SCORERS:
+            for scen,sl in SCEN:
+                r=p.loc[(ds,sc,scen)]
+                lines.append(f"{name} & {'Graph' if 'graph' in sc else 'Attr.'} & {sl} & {r.power_biased:.3f} & {r.power_uniform:.3f} & {r['diff']:.3f} [{r.lo:.3f}, {r.hi:.3f}] & {r.fdp_uniform:.3f}"+'\\\\')
+        lines.append(r'\midrule')
+    lines[-1]=r'\bottomrule';lines.append(r'\end{tabular}');out.write_text('\n'.join(lines)+'\n')
+
 if __name__=='__main__':
+    uniform_table(HERE/'wcs_uniform_table.tex')
     figure('hgb_graph_features','graph-feature scorer',HERE/'wcs_endtoend_figure.pdf')
     figure('hgb_attributes','attribute scorer',HERE/'wcs_endtoend_figure_attributes.pdf')
     endtoend_table(HERE/'wcs_endtoend_table.tex');estimated_table(HERE/'wcs_estimated_table.tex');resolution_table(HERE/'wcs_resolution_table.tex')
