@@ -1,0 +1,239 @@
+\begin{thebibliography}{34}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Angelopoulos et~al.(2022)Angelopoulos, Bates, Cand{\`e}s, Jordan, and
+  Lei]{angelopoulos2022ltt}
+Anastasios~N. Angelopoulos, Stephen Bates, Emmanuel~J. Cand{\`e}s, Michael~I.
+  Jordan, and Lihua Lei.
+\newblock Learn then test: Calibrating predictive algorithms to achieve risk
+  control, 2022.
+\newblock URL \url{https://arxiv.org/abs/2110.01052v5}.
+\newblock arXiv:2110.01052v5.
+
+\bibitem[Anthony and Salehzadeh~Nobari(2026)]{anthony2026audits}
+Martin Anthony and Kaveh Salehzadeh~Nobari.
+\newblock Finite-sample coverage audits for high-recall candidate generation:
+  Certification and learning-theoretic design, 2026.
+\newblock URL \url{https://arxiv.org/abs/2607.21480}.
+\newblock arXiv:2607.21480.
+
+\bibitem[Bashari et~al.(2025)Bashari, Sesia, and Romano]{bashari2025robust}
+Meshi Bashari, Matteo Sesia, and Yaniv Romano.
+\newblock Robust conformal outlier detection under contaminated reference data.
+\newblock In \emph{Proceedings of the International Conference on Machine
+  Learning}, volume 267, pages 3091--3141, 2025.
+
+\bibitem[Bates et~al.(2023)Bates, Cand{\`e}s, Lei, Romano, and
+  Sesia]{bates2023testing}
+Stephen Bates, Emmanuel Cand{\`e}s, Lihua Lei, Yaniv Romano, and Matteo Sesia.
+\newblock Testing for outliers with conformal p-values.
+\newblock \emph{The Annals of Statistics}, 51\penalty0 (1):\penalty0 149--178,
+  2023.
+
+\bibitem[Benjamini and Hochberg(1995)]{benjamini1995controlling}
+Yoav Benjamini and Yosef Hochberg.
+\newblock Controlling the false discovery rate: A practical and powerful
+  approach to multiple testing.
+\newblock \emph{Journal of the Royal Statistical Society, Series B},
+  57\penalty0 (1):\penalty0 289--300, 1995.
+
+\bibitem[Benjamini and Yekutieli(2001)]{benjamini2001control}
+Yoav Benjamini and Daniel Yekutieli.
+\newblock The control of the false discovery rate in multiple testing under
+  dependency.
+\newblock \emph{The Annals of Statistics}, 29\penalty0 (4):\penalty0
+  1165--1188, 2001.
+
+\bibitem[Davis et~al.(2025)Davis, Gallagher, Lawson, and
+  Rubin-Delanchy]{davis2025dynamic}
+Ed~Davis, Ian Gallagher, Daniel~John Lawson, and Patrick Rubin-Delanchy.
+\newblock Valid conformal prediction for dynamic {GNNs}.
+\newblock In \emph{International Conference on Learning Representations}, 2025.
+
+\bibitem[{DGL Contributors}(2026)]{dglfraud}
+{DGL Contributors}.
+\newblock Frauddataset source: Amazon label mask and dataset statistics, 2026.
+\newblock URL \url{https://www.dgl.ai/dgl_docs/_modules/dgl/data/fraud.html}.
+\newblock Accessed September 15, 2026.
+
+\bibitem[Ding et~al.(2019)Ding, Li, Bhanushali, and Liu]{ding2019deep}
+Kaize Ding, Jundong Li, Rohit Bhanushali, and Huan Liu.
+\newblock Deep anomaly detection on attributed networks.
+\newblock In \emph{Proceedings of the SIAM International Conference on Data
+  Mining}, pages 594--602, 2019.
+
+\bibitem[Dou et~al.(2020)Dou, Liu, Sun, Deng, Peng, and Yu]{dou2020enhancing}
+Yingtong Dou, Zhiwei Liu, Li~Sun, Yutong Deng, Hao Peng, and Philip~S. Yu.
+\newblock Enhancing graph neural network-based fraud detectors against
+  camouflaged fraudsters.
+\newblock In \emph{Proceedings of the ACM International Conference on
+  Information and Knowledge Management}, pages 315--324, 2020.
+
+\bibitem[Fithian and Lei(2022)]{fithian2022conditional}
+William Fithian and Lihua Lei.
+\newblock Conditional calibration for false discovery rate control under
+  dependence.
+\newblock \emph{The Annals of Statistics}, 50\penalty0 (6):\penalty0
+  3091--3118, 2022.
+\newblock \doi{10.1214/21-AOS2137}.
+
+\bibitem[Gazin et~al.(2024)Gazin, Blanchard, and
+  Roquain]{gazin2024transductive}
+Ulysse Gazin, Gilles Blanchard, and Etienne Roquain.
+\newblock Transductive conformal inference with adaptive scores.
+\newblock In \emph{Proceedings of the International Conference on Artificial
+  Intelligence and Statistics}, volume 238 of \emph{Proceedings of Machine
+  Learning Research}, pages 1504--1512, 2024.
+\newblock URL \url{https://proceedings.mlr.press/v238/gazin24a.html}.
+
+\bibitem[H.~Zargarbashi and Bojchevski(2024)]{zargarbashi2024inductive}
+Soroush H.~Zargarbashi and Aleksandar Bojchevski.
+\newblock Conformal inductive graph neural networks.
+\newblock In \emph{International Conference on Learning Representations}, 2024.
+
+\bibitem[H.~Zargarbashi et~al.(2023)H.~Zargarbashi, Antonelli, and
+  Bojchevski]{zargarbashi2023conformal}
+Soroush H.~Zargarbashi, Simone Antonelli, and Aleksandar Bojchevski.
+\newblock Conformal prediction sets for graph neural networks.
+\newblock In \emph{Proceedings of the International Conference on Machine
+  Learning}, volume 202, pages 12292--12318, 2023.
+
+\bibitem[Hennh{\"o}fer and Preisach(2026)]{hennhofer2026resolution}
+Oliver Hennh{\"o}fer and Christine Preisach.
+\newblock Between resolution collapse and variance inflation: Weighted
+  conformal anomaly detection in low-data regimes, 2026.
+
+\bibitem[Horvitz and Thompson(1952)]{horvitz1952generalization}
+Daniel~G. Horvitz and Donovan~J. Thompson.
+\newblock A generalization of sampling without replacement from a finite
+  universe.
+\newblock \emph{Journal of the American Statistical Association}, 47\penalty0
+  (260):\penalty0 663--685, 1952.
+\newblock \doi{10.1080/01621459.1952.10483446}.
+
+\bibitem[Huang et~al.(2023)Huang, Jin, Cand{\`e}s, and
+  Leskovec]{huang2023uncertainty}
+Kexin Huang, Ying Jin, Emmanuel Cand{\`e}s, and Jure Leskovec.
+\newblock Uncertainty quantification over graph with conformalized graph neural
+  networks.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem[Jin and Cand{\`e}s(2023)]{jin2023algorithm}
+Ying Jin and Emmanuel~J. Cand{\`e}s.
+\newblock Model-free selective inference under covariate shift via weighted
+  conformal p-values, 2023.
+\newblock URL \url{https://arxiv.org/html/2307.09291v2}.
+\newblock arXiv:2307.09291v2, Algorithm 2.
+
+\bibitem[Jin and Cand{\`e}s(2026)]{jin2026weighted}
+Ying Jin and Emmanuel~J. Cand{\`e}s.
+\newblock Model-free selective inference under covariate shift via weighted
+  conformal p-values.
+\newblock \emph{Biometrika}, 113\penalty0 (1):\penalty0 asaf066, 2026.
+\newblock \doi{10.1093/biomet/asaf066}.
+
+\bibitem[Jin and Ren(2025)]{jin2025focal}
+Ying Jin and Zhimei Ren.
+\newblock Confidence on the focal: conformal prediction with
+  selection-conditional coverage.
+\newblock \emph{Journal of the Royal Statistical Society Series B: Statistical
+  Methodology}, 87\penalty0 (4):\penalty0 1239--1259, 2025.
+\newblock \doi{10.1093/jrsssb/qkaf016}.
+
+\bibitem[Kipf and Welling(2016)]{kipf2016variational}
+Thomas~N. Kipf and Max Welling.
+\newblock Variational graph auto-encoders, 2016.
+\newblock URL \url{https://arxiv.org/abs/1611.07308}.
+\newblock NIPS Bayesian Deep Learning Workshop; arXiv:1611.07308.
+
+\bibitem[Lee et~al.(2026)Lee, Jung, and Hong]{lee2026survey}
+Chihoon Lee, Sungkyu Jung, and Hyokyoung~G. Hong.
+\newblock Predicting current outcomes from historical survey data with weighted
+  conformal prediction, 2026.
+
+\bibitem[Liu et~al.(2008)Liu, Ting, and Zhou]{liu2008isolation}
+Fei~Tony Liu, Kai~Ming Ting, and Zhi-Hua Zhou.
+\newblock Isolation forest.
+\newblock In \emph{IEEE International Conference on Data Mining}, pages
+  413--422, 2008.
+\newblock \doi{10.1109/ICDM.2008.17}.
+
+\bibitem[Liu et~al.(2024)Liu, Dou, Ding, Hu, Zhang, Peng, Sun, and
+  Yu]{liu2024pygod}
+Kay Liu, Yingtong Dou, Xueying Ding, Xiyang Hu, Ruitong Zhang, Hao Peng, Lichao
+  Sun, and Philip~S. Yu.
+\newblock {PyGOD}: A {Python} library for graph outlier detection.
+\newblock \emph{Journal of Machine Learning Research}, 25\penalty0
+  (141):\penalty0 1--9, 2024.
+
+\bibitem[Marandon(2023)]{marandon2023link}
+Ariane Marandon.
+\newblock Conformal link prediction for false discovery rate control, 2023.
+\newblock URL \url{https://arxiv.org/abs/2306.14693}.
+\newblock arXiv:2306.14693.
+
+\bibitem[Marandon et~al.(2024)Marandon, Lei, Mary, and
+  Roquain]{marandon2024adaptive}
+Ariane Marandon, Lihua Lei, David Mary, and Etienne Roquain.
+\newblock Adaptive novelty detection with false discovery rate guarantee.
+\newblock \emph{The Annals of Statistics}, 52\penalty0 (1):\penalty0 157--183,
+  2024.
+\newblock \doi{10.1214/23-AOS2338}.
+
+\bibitem[Platonov et~al.(2023)Platonov, Kuznedelev, Diskin, Babenko, and
+  Prokhorenkova]{platonov2023critical}
+Oleg Platonov, Denis Kuznedelev, Michael Diskin, Artem Babenko, and Liudmila
+  Prokhorenkova.
+\newblock A critical look at the evaluation of {GNN}s under heterophily: Are we
+  really making progress?
+\newblock In \emph{International Conference on Learning Representations}, 2023.
+
+\bibitem[{PyGOD Contributors}(2026)]{pygoddata}
+{PyGOD Contributors}.
+\newblock {PyGOD} public graph outlier datasets, 2026.
+\newblock URL \url{https://github.com/pygod-team/data}.
+\newblock Weibo distributed data and accompanying dataset table, accessed
+  September 23, 2026.
+
+\bibitem[Shaked and Shanthikumar(2007)]{shaked2007stochastic}
+Moshe Shaked and J.~George Shanthikumar.
+\newblock \emph{Stochastic Orders}.
+\newblock Springer, 2007.
+
+\bibitem[Tang et~al.(2023)Tang, Hua, Gao, Zhao, and Li]{tang2023gadbench}
+Jianheng Tang, Fengrui Hua, Ziqi Gao, Peilin Zhao, and Jia Li.
+\newblock {GADBench}: Revisiting and benchmarking supervised graph anomaly
+  detection.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~36, pages 29628--29653, 2023.
+
+\bibitem[Tibshirani et~al.(2019)Tibshirani, Barber, Cand{\`e}s, and
+  Ramdas]{tibshirani2019conformal}
+Ryan~J. Tibshirani, Rina~Foygel Barber, Emmanuel~J. Cand{\`e}s, and Aaditya
+  Ramdas.
+\newblock Conformal prediction under covariate shift.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~32, 2019.
+
+\bibitem[Vovk et~al.(2005)Vovk, Gammerman, and Shafer]{vovk2005algorithmic}
+Vladimir Vovk, Alexander Gammerman, and Glenn Shafer.
+\newblock \emph{Algorithmic Learning in a Random World}.
+\newblock Springer, 2005.
+
+\bibitem[Wang et~al.(2024)Wang, Huo, Peng, and Zou]{wang2024selective}
+Xiaoning Wang, Yuyang Huo, Liuhua Peng, and Changliang Zou.
+\newblock Conformalized multiple testing after data-dependent selection.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~37, 2024.
+
+\bibitem[Wieczorek(2023)]{wieczorek2023design}
+Jerzy Wieczorek.
+\newblock Design-based conformal prediction.
+\newblock \emph{Survey Methodology}, 49\penalty0 (2), 2023.
+\newblock arXiv:2303.01422.
+
+\end{thebibliography}

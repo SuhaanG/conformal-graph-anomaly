@@ -1,0 +1,67 @@
+\section{SUPERVISED CONTROLS AND REFERENCE BUDGET}
+\label{app:supervised}
+The following experiments were specified after inspecting the original cached-score results. They are exploratory robustness checks, not independent confirmatory evidence on new graph instances. Every graph, model, seed, and declared label budget is retained, including negative results. The scripts, protocols, score caches, per-draw results, and checks are supplied under \texttt{paper/audit\_method}.
+
+\paragraph{Training and evaluation.}
+For each of ten seeds, draw a uniform 10\% sample of verified nodes without inspecting its labels. This gives 864 training labels on Amazon and 1,176 on Tolokers. Remaining deployment sizes are 7,775 and 10,582. Fit scikit-learn's histogram-gradient-boosting classifier with 200 iterations, learning rate $0.1$, at most 31 leaves, minimum leaf size 20, $L_2$ regularization 1, no class weighting, and no early stopping. The attribute model uses the cached features. The graph model adds the unweighted one-hop feature mean and $\log(1+d)$. These covariates use no labels; graph training features may incorporate unlabeled test-node attributes, consistent with the transductive setting. Training labels are not reused as calibration or certification observations. No hyperparameter or score-direction selection uses deployment outcomes.
+
+Each training panel uses five label-stratified splits of the remaining deployment population, with approximately 25\% assigned to testing. Splits are paired between scorers but vary across training panels; this differs from the crossed seed--split design of the unsupervised replication. For each split, the oracle filter uses all anomalous-neighbor labels, and the matched random comparator draws 200 samples at the filtered pool size. Filtered pools never exceed the declared cap of 1,000, so that rule selects the entire filtered pool. Full-reference calibration includes all eligible non-test normals. Table~\ref{tab:supervisedfull} reports seed means and SDs after averaging over calibration draws and splits. The reference pool is normal-only; obtaining it requires labeling the reference panel, rather than knowing normal identities for free.
+
+\begin{table*}[t]
+\centering\scriptsize
+\caption{Complete supervised oracle-filter comparison. FDP and power are mean $\pm$ SD of ten training-seed averages; discoveries and calibration size $n$ are means. Full-reference and matched comparisons share test sets but differ in reference size.}
+\label{tab:supervisedfull}\input{supervised_full_table.tex}
+\end{table*}
+
+\paragraph{Filtering with observed non-test labels.}
+Reveal each non-test deployment node with probability $\rho\in\{0.25,0.50\}$ using nested random draws. All training labels are already known and may identify anomalous neighbors, but training nodes remain excluded from calibration. The eligible reference consists only of revealed normal deployment nodes. A node passes the filter if no known anomalous neighbor occurs in either the training or revealed reference panel. Both filtered and random rules draw $\min(1000,|\mathcal P_F|)$ nodes, with 200 repetitions; the full-reference arm uses the entire revealed normal pool. Changing every unknown label leaves the filter unchanged in all 200 graph--seed--split--revelation checks. Labels used to construct stratified benchmark test sets and calculate FDP are never passed to the filter.
+
+\begin{table*}[t]
+\centering\scriptsize
+\caption{All supervised partial-label comparisons. FDP and power are mean $\pm$ seed SD. ``Labels'' counts the mean revealed non-test deployment labels, including normal and anomalous nodes; add 864 training labels for Amazon or 1,176 for Tolokers. Thus these comparisons are not equal-label-budget alternatives to direct batch certification.}
+\label{tab:supervisedpartial}\input{supervised_partial_table.tex}
+\end{table*}
+
+\paragraph{Unrestricted references and degree normalization.}
+On the original corrected, untrimmed score caches, full-reference calibration uses 5,864 normals on Amazon and 6,894 on Tolokers. All 400 configurations (two graphs, four scores, ten seeds, five splits) produce no discoveries. The four scores are DOMINANT, GAE, Isolation Forest, and DOMINANT divided by $\log(1+d+10^{-8})$. This fixed normalization gives Amazon AUROC $0.536$ and filtered mean FDP $0.165$ (seed SD $0.182$), with power $0.061$ (SD $0.071$). Its matched random mean FDP is $0.000085$ and power $0.000009$; all Tolokers normalized-score rules make no discoveries. Normalization changes the score ranking and reduces one contrast, but does not yield a useful calibrated detector here or identify degree as the unique cause.
+
+\paragraph{Reproducibility.}
+Master seeds 20260924--20260926 define the supervised training panels, certification audits, and evaluation splits; 20260928 defines the observed-label checks. The output contains 40 trained score vectors, 40,400 supervised oracle-comparison rows, and 160,400 observed-label comparison rows. Input and output checksums, software versions, train/deployment separation, matching of reference sizes, and complete seed coverage are checked in the supplied scripts. Monte Carlo draws on the same graph are not independent graph replications.
+
+\clearpage
+\section{EXPLORATORY FIXED-BATCH FDP CERTIFICATION}
+\label{app:certificate}
+The conditional rank audit in the main text diagnoses a reference-sampling rule using known benchmark labels. A different task is to certify the precision of proposed discoveries by obtaining a random audit of their labels. We examine a standard finite-population construction for that task. Simultaneous risk certification is closely related to Learn then Test~\citep{angelopoulos2022ltt}; exact hypergeometric inversion and certification of fixed candidate families also appear in recent work on candidate-generation coverage~\citep{anthony2026audits}. The latter targets missed mass and recall rather than the FDP of unreviewed discoveries. We claim neither a new confidence-bound principle nor superiority of the evaluated graph-stratified design.
+
+\paragraph{Procedure and guarantee.}
+Condition on a finite graph, its binary labels, a trained scorer, and $K$ candidate sets fixed before audit labels are obtained. Audit uniformly without replacement from a fixed superset of these candidates. Conditional on the number $h_k$ of audited nodes in candidate $k$ of size $R_k$, the observed normal count $X_k$ is hypergeometric with unknown total normal count $V_k$. Write $H_{R,v,h}(x)$ for its CDF and define
+\[
+ U_k(x)=\max\{v:H_{R_k,v,h_k}(x)\ge\delta/K\},
+\]
+where the maximum ranges over integers $x\le v\le R_k-h_k+x$. Remove every audited node from automatic discoveries. For $R_k>h_k$, its remaining FDP has upper bound
+\[
+ B_k=\frac{\min\{R_k-h_k,U_k(X_k)-X_k\}}{R_k-h_k}.
+\]
+Select the largest remaining candidate with $B_k\le q$, or abstain if none qualifies. This permits data-dependent choice among the fixed candidates, not tuning the candidates or scorer using the audit labels.
+
+For completeness, the hypergeometric CDF decreases in $v$. Hence $U_k(X_k)<V_k$ implies $H_{R_k,V_k,h_k}(X_k)<\delta/K$, an event with probability at most $\delta/K$ by discrete CDF super-uniformity. Conditioning on $h_k$ and then averaging preserves this bound. A union bound makes all $K$ normal-count bounds hold with probability at least $1-\delta$, without independent candidates or independent graph nodes. Subtracting the observed audited normals gives the displayed FDP bounds simultaneously. Consequently the selected unreviewed set satisfies
+\[
+ \Prb_{\rm audit}\{\FDP\le q\}\ge1-\delta.
+\]
+Correct labels and the specified random audit design are essential. This certifies the fixed batch, not future graphs. It implies $\E[\FDP]\le q+(1-q)\delta$; at $q=0.10,\delta=0.05$ this is $0.145$, not $0.10$. Scorer selection after audit inspection would require joint coverage over the model family; our comparisons evaluate frozen scorers separately.
+
+\paragraph{Designs and budgets.}
+Use candidate score prefixes of sizes $25,50,100,200,400,800,1600,\lfloor0.2N\rfloor$, sorted and deduplicated, with node ID breaking score ties. $N$ is the entire deployment batch rather than the smaller conformal test split. Uniform auditing samples either the largest candidate or the whole deployment graph. Score stratification partitions the largest candidate at the prefix boundaries. Degree stratification further divides each score band into equal-size degree-rank halves. Capped equal allocation assigns the fixed budget to strata before observing labels. Each stratum receives a hypergeometric upper bound at level $\delta/H$, where $H$ is the number of strata; summing these bounds over complete candidate strata and subtracting observed normals gives the same simultaneous FDP guarantee. This allocation is a prototype, not an optimized sampling rule.
+
+For every frozen score, evaluate budgets $B\in\{100,250,500\}$ with 200 audits per design at $q=0.10,\delta=0.05$. With the original three detectors and normalized DOMINANT, all 192,000 audit trials abstain. The declared prefixes lack the population precision needed for useful 90\%-precision certification in that score regime. The subsequent supervised extension uses 96,000 audit trials and separately accounts for training labels. Its full mean true-discovery comparison is in Table~\ref{tab:certificate}; all omitted smaller-budget stratified and whole-graph cells are zero, and the supplied CSV contains every cell.
+
+\begin{table*}[t]
+\centering\scriptsize
+\caption{Mean true discoveries among unreviewed nodes. All 100- and 250-label cells for score strata, score-plus-degree strata, and graph-uniform auditing are zero. Means include abstention; audited anomalies are excluded. Each entry averages ten trained scorers and 200 audits per scorer.}
+\label{tab:certificate}\input{certificate_table.tex}
+\end{table*}
+
+Amazon's attribute model with 500 candidate-uniform audit labels returns mean 216.0 automatic discoveries, of which 211.5 are true. It returns a nonempty set in 80.75\% of trials; mean FDP is $0.0165$ including abstention and $0.0204$ conditional on a nonempty set. Its 864 training labels are additional to the audit budget. The graph-feature scorer gives mean 207.4 automatic discoveries, including 202.8 true anomalies. Degree stratification and whole-graph uniform auditing return none; score-only stratification returns substantially fewer. Every Tolokers condition abstains. Thus direct certification is useful in one accurate-score regime, but the present graph-stratified allocation does not improve label efficiency.
+
+\paragraph{Validation.}
+Exact enumeration checks 18,600 hypergeometric coverage cases and 2,048 small-population selection configurations, including nonempty selection, full and empty audits, and all-normal/all-anomaly populations. A further 64,000 synthetic audits include nonvacuous high-precision controls; the largest observed cell failure rate is $0.005$ at $\delta=0.05$. No supervised-score audit violates the FDP target in these runs. These implementation checks supplement the proof; neither zero observed violations nor the large number of reused-graph audits supplies the guarantee.

@@ -1,0 +1,13 @@
+\paragraph{A remedy based on randomized roles.}
+Rather than use a low-exposure reference for every test node, retain both exposure strata and calibrate each against its own randomly acquired normals. Fix the strata using the graph, a separate training panel, and observed anomalous neighbors. Their construction must be invariant to which remaining normal nodes become calibration or test nodes. A threshold estimated only from the realized calibration pool generally does not meet this requirement.
+
+\begin{lemma}[Stratified random-role calibration]
+\label{lem:stratified}
+Condition on the graph, labels, deployment universe, training panel, role-invariant fitted scores, and all anomaly-side test and revelation assignments. Let $D_1,\ldots,D_H$ be strata fixed by this information. Resolve all score ties lexicographically with independent continuous marks drawn before normal-role assignment. Uniformly choose a prescribed number of deployment normals for testing, and independently reveal each remaining normal with probability $\rho$. In stratum $h$, let $n_h$ be the revealed-normal reference size, $m_{0h}$ the normal-test count, and $m_h$ the total test count. Apply conformal BH separately at fixed levels $\alpha_h$ with $\sum_h\alpha_h\le\alpha$, abstaining if the reference or test stratum is empty. Conditional also on all stratum role counts,
+\begin{equation}
+\E[\FDP_{\rm union}]
+\le\sum_{h:m_h>0}\alpha_h\frac{m_{0h}}{m_h}\le\alpha.
+\label{eq:stratified}
+\end{equation}
+\end{lemma}
+The conditional expectation in Equation~\eqref{eq:stratified} averages over normal identities assigned to roles; it does not fix the realized normal test set. Uniform role assignment supplies the exchangeability needed within each stratum~\citep{marandon2024adaptive}. Splitting $\alpha$ avoids a cross-stratum dependence assumption because $\FDP_{\rm union}\le\sum_h\FDP_h$ pointwise. Small strata reduce rank resolution and power, while empty references safely abstain. The proof and the comparisons with pooled full-reference calibration follow.

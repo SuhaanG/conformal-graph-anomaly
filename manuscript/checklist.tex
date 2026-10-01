@@ -1,0 +1,42 @@
+\section*{Checklist}
+\begin{enumerate}
+
+  \item For all models and algorithms presented, check if you include:
+  \begin{enumerate}
+    \item A clear description of the mathematical setting, assumptions, algorithm, and/or model. [Yes. Sections 2--4 define the setting, the acquisition design, the procedure and the experiments; Appendices~\ref{app:wcsdesign}, \ref{app:supervised} and~\ref{app:certificate} give the complete statements.]
+    \item An analysis of the properties and complexity (time, space, sample size) of any algorithm. [Partial. Section 3 states the cost of the procedure (one sort, then one BH run per distinct weight value, so up to quadratic work when every test node has its own weight) and Proposition~\ref{prop:wresolution} gives the sample-size requirement for a discovery; no full complexity analysis of every baseline is provided.]
+    \item (Optional) Anonymized source code, with specification of all dependencies, including external libraries. [Yes. The anonymized supplement includes the source, pinned dependencies, frozen protocols, per-trial ledgers and a verification script.]
+  \end{enumerate}
+
+  \item For any theoretical claim, check if you include:
+  \begin{enumerate}
+    \item Statements of the full set of assumptions of all theoretical results. [Yes. Section 3 states the assumptions of Theorem~\ref{thm:design}, Corollary~\ref{cor:trained} and Proposition~\ref{prop:wresolution}, including what they do not cover; Appendices~\ref{app:proofs}, \ref{app:stratified}, \ref{app:allocation} and~\ref{app:certificate} state the assumptions of the remaining results.]
+    \item Complete proofs of all theoretical results. [Yes. Appendix~\ref{app:wcsdesign} proves the design-based guarantee, its corollary and the resolution proposition; Appendix~\ref{app:proofs} proves the score-level and resolution statements; Appendix~\ref{app:stratified} proves the stratified lemma; Appendix~\ref{app:allocation} proves the allocation variants; Appendix~\ref{app:certificate} proves the batch certificate.]
+    \item Clear explanations of any assumptions. [Yes. Known versus estimated propensities, independent acquisition, uniform test assignment, role-invariant scores, tie conventions and fixed-batch conditioning are distinguished.]
+  \end{enumerate}
+
+  \item For all figures and tables that present empirical results, check if you include:
+  \begin{enumerate}
+    \item The code, data, and instructions needed to reproduce the main experimental results (either in the supplemental material or as a URL). [Yes. The supplement contains the scripts, processed inputs or acquisition instructions, cached scores, per-trial outcomes and a script that reproduces the main results from a fresh copy (Appendix~\ref{app:implementation}).]
+    \item All the training details (e.g., data splits, hyperparameters, how they were chosen). [Yes. Section 4 and Appendices~\ref{app:implementation}, \ref{app:supervised}, \ref{app:dose} and~\ref{app:extensions} give the fixed settings, panel and split construction, and acquisition designs; follow-up experiments are identified as such.]
+    \item A clear definition of the specific measure or statistics and error bars (e.g., with respect to the random seed after running experiments multiple times). [Yes. Section 4 and the captions define FDP, power, the averaging order, seed-clustered intervals, Monte Carlo SEs and paired intervals, and state what each does and does not measure.]
+    \item A description of the computing infrastructure used. (e.g., type of GPUs, internal cluster, or cloud provider). [Yes. Appendix~\ref{app:implementation} describes the GPU used for the unsupervised detectors and the CPU environment for every other experiment.]
+  \end{enumerate}
+
+  \item If you are using existing assets (e.g., code, data, models) or curating/releasing new assets, check if you include:
+  \begin{enumerate}
+    \item Citations of the creator If your work uses existing assets. [Yes. Dataset, model and statistical-method sources are cited.]
+    \item The license information of the assets, if applicable. [No. Source provenance and hashes are recorded, but a consolidated inventory of asset licenses is not included.]
+    \item New assets either in the supplemental material or as a URL, if applicable. [Yes. New code, protocols, cached scores, synthetic results and validation outputs are in the supplement.]
+    \item Information about consent from data providers/curators. [No. We reuse public benchmark releases and did not collect new provider-consent information.]
+    \item Discussion of sensible content if applicable, e.g., personally identifiable information or offensive content. [Not Applicable. The experiments use released numerical graph data and synthetic observations; no new personally identifying or offensive content is curated.]
+  \end{enumerate}
+
+  \item If you used crowdsourcing or conducted research with human subjects, check if you include:
+  \begin{enumerate}
+    \item The full text of instructions given to participants and screenshots. [Not Applicable. We did not recruit participants or conduct a new human-subject study.]
+    \item Descriptions of potential participant risks, with links to Institutional Review Board (IRB) approvals if applicable. [Not Applicable. We did not recruit participants or conduct a new human-subject study.]
+    \item The estimated hourly wage paid to participants and the total amount spent on participant compensation. [Not Applicable. We did not recruit participants or conduct a new human-subject study.]
+  \end{enumerate}
+
+\end{enumerate}

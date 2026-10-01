@@ -1,0 +1,14 @@
+\begin{table*}[t]
+\centering\small\setlength{\tabcolsep}{5pt}
+\caption{Moderate reference selection with useful scorers on three graphs. Half of non-test labels are revealed; the highest-exposure 20\% of reference normals are removed, or the same count is removed randomly. Scores, test identities and remaining reference sizes match within each pair. Entries give mean FDP / power at nominal $0.10$. The final column gives the paired FDP increase in percentage points with a pointwise 95\% interval over ten seed averages, conditional on each graph. All abstentions are included.}
+\label{tab:threegraphs}
+\begin{tabular}{llrrl}\toprule
+Graph & Score & Exposure & Random & $\Delta$ FDP (pp) [95\% interval]\\\midrule
+Amazon & Attributes & $0.119/0.799$ & $0.088/0.778$ & $+3.1\ [2.2,4.0]$ \\
+Amazon & Graph features & $0.145/0.820$ & $0.091/0.788$ & $+5.4\ [3.9,6.9]$ \\
+T-Finance & Attributes & $0.127/0.668$ & $0.093/0.650$ & $+3.4\ [2.4,4.3]$ \\
+T-Finance & Graph features & $0.191/0.830$ & $0.095/0.789$ & $+9.6\ [7.7,11.6]$ \\
+Weibo (GADBench) & Attributes & $0.184/0.783$ & $0.094/0.663$ & $+9.0\ [7.5,10.6]$ \\
+Weibo (GADBench) & Graph features & $0.286/0.973$ & $0.091/0.844$ & $+19.5\ [18.0,21.1]$ \\
+\bottomrule\end{tabular}
+\end{table*}

@@ -1,0 +1,91 @@
+% Design-based FDR control for WCS under known-propensity acquisition.
+% Revised 2026-09-26 after an independent line-by-line check; wrappers changed 2026-09-29
+% so that the statements live in Section 3 of the main text and this appendix holds the proofs.
+\section{PROOFS FOR THE ACQUISITION DESIGN}
+\label{app:wcsdesign}
+
+\paragraph{Design.}
+Condition on $\mathcal F$: the graph, all labels, the training panel, role-invariant fitted scores, independent continuous tie marks (so all scores are distinct), the anomalous test set $\testset_1$, and acquisition propensities $\rho(v)\in(0,1]$ that are functions of $\mathcal F$ alone (in our experiments, of training-label exposure strata). Let $\mathcal N$ be the $N_0$ deployment normals. Choose $m_0$ of them uniformly without replacement as null tests $\testset_0$. Acquire each remaining normal $v$ independently with probability $\rho(v)$; the acquired normals form the calibration set $\calset$, and the rest form the unused set $\mathcal U$. Let $\testset=\testset_0\cup\testset_1$, $m=|\testset|$, and $w(v)=1/\rho(v)$.
+
+\paragraph{Procedure (deterministic WCS).}
+For a test node $j$, let
+\[
+p_j=\frac{w(j)+\sum_{i\in\calset}w(i)\ind\{s(i)\ge s(j)\}}{w(j)+\sum_{i\in\calset}w(i)}.
+\]
+For $l\neq j$ define the auxiliary values
+\[
+p_l^{(j)}=\frac{\sum_{i\in\calset}w(i)\ind\{s(i)>s(l)\}+w(j)\ind\{s(j)>s(l)\}}{\sum_{i\in\calset}w(i)+w(j)},\qquad p_j^{(j)}=0,
+\]
+and let $S_j$ be the number of BH rejections at level $\alpha$ among $(p_l^{(j)})_{l\in\testset}$. Since $p_j^{(j)}=0\le\alpha/m$, BH always rejects at least one coordinate, so $1\le S_j\le m$. The first-stage set is $\mathcal R_1=\{j:p_j\le\alpha S_j/m\}$. For $\xi\in(0,1]$, let $r^*(\xi)=\max\{r\in\{0,1,\ldots,m\}:|\{j\in\mathcal R_1:\xi S_j\le r\}|\ge r\}$ and $\mathcal R(\xi)=\{j\in\mathcal R_1:\xi S_j\le r^*(\xi)\}$. Deterministic pruning reports $\mathcal R(1)$; homogeneous pruning reports $\mathcal R(\xi)$ for one $\xi\sim{\rm Unif}(0,1)$ drawn independently of everything else. This is the outlier-detection variant, Algorithm~2 of \citet{jin2023algorithm} (arXiv v2; the general selection version is its Algorithm~1), with weights $1/\rho$. Moreover $|\mathcal R(\xi)|=r^*(\xi)$: write $c(r)=|\{j\in\mathcal R_1:\xi S_j\le r\}|$, which is nondecreasing in $r$ and at most $m$. If $c(r^*)>r^*$, then $c(c(r^*))\ge c(r^*)$, so $r=c(r^*)\in\{0,\ldots,m\}$ also qualifies, contradicting maximality.
+
+\noindent\textbf{Theorem~\ref{thm:design} (restated).} Under the design above, both deterministic and homogeneous pruning satisfy $\E[\FDP\mid\mathcal F]\le\alpha m_0/m\le\alpha$. We first prove this for deterministic $p$-values and then extend it to randomized $p$-values.
+
+\begin{proof}
+\emph{Positions.} Order $\testset_0$ by an independent uniform permutation, and write $\pi_k$ for the node in position $k=1,\ldots,m_0$. Then $\FDP=\sum_{k=1}^{m_0}\ind\{\pi_k\in\mathcal R\}/(|\mathcal R|\vee1)$.
+
+\emph{Pruning.} We show that for each $j$, with everything except $\xi$ held fixed,
+\[
+\frac{\ind\{j\in\mathcal R\}}{|\mathcal R|\vee1}\le\frac{\ind\{p_j\le\alpha S_j/m\}}{S_j}
+\quad\text{(deterministic)},\qquad
+\E_\xi\Bigl[\frac{\ind\{j\in\mathcal R(\xi)\}}{|\mathcal R(\xi)|\vee1}\Bigr]\le\frac{\ind\{p_j\le\alpha S_j/m\}}{S_j}
+\quad\text{(homogeneous)}.
+\]
+For deterministic pruning, $j\in\mathcal R$ implies $j\in\mathcal R_1$ and $S_j\le r^*=|\mathcal R|$. For homogeneous pruning, take $j\in\mathcal R_1$ and write $g(\xi)=r^*(\xi)$. Each count $|\{i\in\mathcal R_1:\xi S_i\le r\}|$ is nonincreasing in $\xi$, so $g$ is nonincreasing. Hence $A=\{\xi\in(0,1]:\xi S_j\le g(\xi)\}$ is an initial interval: if $\xi_2\in A$ and $\xi_1<\xi_2$, then $\xi_1S_j<\xi_2S_j\le g(\xi_2)\le g(\xi_1)$. Let $\xi_0=\sup A$, with $\xi_0=0$ if $A$ is empty. If $\xi_0=0$, $A$ has Lebesgue measure zero and the expectation below is zero. Otherwise fix $\xi\in A$. Every $\xi'\in A$ with $\xi'\ge\xi$ satisfies $g(\xi)\ge g(\xi')\ge\xi'S_j$, and such $\xi'$ exist arbitrarily close to $\xi_0$; taking the supremum over them gives $g(\xi)\ge\xi_0S_j$, with no continuity of $g$ required. Therefore $\E_\xi[\ind\{\xi\in A\}/g(\xi)]\le\xi_0/(\xi_0S_j)=1/S_j$. The event $j\in\mathcal R(\xi)$ is exactly $j\in\mathcal R_1$ and $\xi\in A$, which proves the display. Because $\xi$ is independent of the design, both cases reduce to bounding $\E[\ind\{p_j\le\alpha S_j/m\}/S_j]$ for null $j$.
+
+\emph{Conditioning.} Fix $k$ and let $\mathcal E_k$ be the node identities in all other positions, the set $\mathcal U$, and the unordered set $\mathcal S=\calset\cup\{\pi_k\}$. Given $(\mathcal F,\mathcal E_k)$, the configuration is determined by which $j\in\mathcal S$ occupies position $k$. Its probability is the ordered test-assignment probability, which is the same for every $j$, times the acquisition probability. The designated node $j$ is a test node and is never subject to acquisition, every $i\in\mathcal S\setminus\{j\}$ must have been acquired, and every $u\in\mathcal U$ was not, so the configuration has probability proportional to
+\[
+\prod_{i\in\mathcal S\setminus\{j\}}\rho(i)\prod_{u\in\mathcal U}\{1-\rho(u)\}
+=\frac{1}{\rho(j)}\prod_{i\in\mathcal S}\rho(i)\prod_{u\in\mathcal U}\{1-\rho(u)\},
+\]
+whose only factor depending on $j$ is $1/\rho(j)=w(j)$. Hence
+\[
+\Prb(\pi_k=j\mid\mathcal F,\mathcal E_k)=\frac{w(j)}{\sum_{i\in\mathcal S}w(i)},\qquad j\in\mathcal S.
+\]
+
+\emph{Invariance.} If $j=\pi_k$, then $\calset=\mathcal S\setminus\{j\}$, and for every other test node $l$
+\[
+p_l^{(j)}=\frac{\sum_{i\in\mathcal S}w(i)\ind\{s(i)>s(l)\}}{\sum_{i\in\mathcal S}w(i)},
+\]
+which does not depend on which element of $\mathcal S$ is designated; the other test nodes and their scores are fixed by $\mathcal E_k$. The BH input is therefore always the same multiset $\{0,q_1,\ldots,q_{m-1}\}$, with the zero attached to whichever node is designated. BH counts depend only on the values, so $S_{\pi_k}=\sigma_k$ is a function of $(\mathcal F,\mathcal E_k)$.
+
+\emph{Weighted super-uniformity.} Likewise $p_{\pi_k}=\sum_{i\in\mathcal S}w(i)\ind\{s(i)\ge s(\pi_k)\}/\sum_{i\in\mathcal S}w(i)$. List $\mathcal S$ by decreasing score with normalized masses $a_1,\ldots,a_{|\mathcal S|}$. If the target is the $r$th element, its p-value is $F_r=a_1+\cdots+a_r$, and it is the $r$th element with probability $a_r$. The event $\{F_r\le t\}$ holds exactly for an initial segment $r\le r_t$, with total probability $F_{r_t}\le t$. Thus $\Prb(p_{\pi_k}\le t\mid\mathcal F,\mathcal E_k)\le t$.
+
+\emph{Conclusion.} Combining the last three displays,
+\[
+\E\Bigl[\frac{\ind\{\pi_k\in\mathcal R\}}{|\mathcal R|\vee1}\Bigm|\mathcal F,\mathcal E_k\Bigr]
+\le\frac{\Prb(p_{\pi_k}\le\alpha\sigma_k/m\mid\mathcal F,\mathcal E_k)}{\sigma_k}\le\frac{\alpha}{m}.
+\]
+Averaging over $\mathcal E_k$ and summing over the $m_0$ positions gives the claim.
+\end{proof}
+
+\paragraph{Scope.}
+The argument uses only the randomization of roles and acquisition, so it permits arbitrary graph dependence among scores and labels once $\mathcal F$ is fixed. It is an adaptation of the weighted-exchangeability proof of \citet{jin2026weighted}, which assumes independent draws under covariate shift, to a finite-population design. It requires propensities that are known, positive, and fixed before normal roles are assigned. It does not cover estimated propensities, acquisition that adapts to earlier labels, or a filter applied after acquisition. Exact enumeration over small finite populations, integrating homogeneous pruning over $\xi$ exactly, found no case above $\alpha m_0/m$ (\texttt{wcs\_validation.json} in the supplement); this checks the implementation and does not replace the proof.
+
+\paragraph{Randomized weighted p-values.}
+Replace the test-point term by an independent uniform multiple: with $U_j\sim{\rm Unif}(0,1)$ drawn independently of the design and of $\xi$,
+\[
+\tilde p_j=\frac{U_jw(j)+\sum_{i\in\calset}w(i)\ind\{s(i)>s(j)\}}{w(j)+\sum_{i\in\calset}w(i)},
+\]
+keeping the auxiliary values $p_l^{(j)}$, and hence every $S_j$, unchanged. In the notation of the proof, a target at the $r$th element of $\mathcal S$ has $\tilde p=F_{r-1}+U a_r$, which is uniform on $[F_{r-1},F_r]$. These intervals partition $[0,1]$ and the $r$th is chosen with probability equal to its length $a_r$, so the mixture is exactly uniform:
+\[
+\Prb(\tilde p_{\pi_k}\le t\mid\mathcal F,\mathcal E_k)=\sum_r a_r\min\Bigl\{1,\frac{(t-F_{r-1})_+}{a_r}\Bigr\}=\sum_r\min\{a_r,(t-F_{r-1})_+\}=t,\qquad t\in[0,1].
+\]
+The rest of the proof is unchanged, so Theorem~\ref{thm:design} holds for randomized WCS with either pruning rule. Individual decisions then depend on the auxiliary coins $U_j$.
+
+\paragraph{Proof of Corollary~\ref{cor:trained}.}
+Theorem~\ref{thm:design} conditions on fixed scores. The end-to-end experiments instead fit the scorer on part of the acquired labels, so the swap law is proved directly for that design rather than by re-invoking the theorem. Fix $f\in[0,1)$ and the anomaly-side roles. After the null tests are chosen, each non-test normal is independently unused with probability $1-\rho(v)$, sent to training with probability $f\rho(v)$, or sent to calibration with probability $(1-f)\rho(v)$. Scores may depend on the training set $\mathcal B$, a fixed prior panel, fixed unlabeled graph information and independent model randomness, but on nothing else. Condition on these, on the tie marks, the unused set, the other null-test positions and the unordered set $\mathcal S=\calset\cup\{\pi_k\}$. For $j\in\mathcal S$ the configuration with $\pi_k=j$ has probability proportional to
+\[
+\prod_{b\in\mathcal B}f\rho(b)\prod_{u\in\mathcal U}\{1-\rho(u)\}\prod_{i\in\mathcal S\setminus\{j\}}(1-f)\rho(i),
+\]
+in which the only factor varying with $j$ is $1/\{(1-f)\rho(j)\}$. The common $1/(1-f)$ cancels, so $\Prb(\pi_k=j\mid\cdot)=w(j)/\sum_{i\in\mathcal S}w(i)$ with the same $w=1/\rho$. The scores are unchanged under the swap because $\mathcal B$ is fixed, so the invariance, super-uniformity (or exact uniformity for randomized p-values) and pruning steps apply verbatim, and $\E[\FDP]\le\alpha m_0/m$. With node-dependent training fractions $f(v)$ the weights become proportional to $1/\{\rho(v)(1-f(v))\}$.
+
+\medskip\noindent\textbf{Proposition~\ref{prop:wresolution} (restated).} For deterministic weighted p-values let $f_j=w(j)/\{w(j)+\sum_{i\in\calset}w(i)\}$, the smallest value $p_j$ can take. If $j$ is rejected by weighted BH or by WCS with deterministic pruning, then $|\mathcal R|\ge mf_j/\alpha$; with homogeneous pruning, $|\mathcal R|\ge\xi mf_j/\alpha$. For all three procedures, no test node with $f_j>\alpha$ can be discovered.
+\begin{proof}
+Weighted BH rejects $j$ only if $f_j\le p_j\le\alpha|\mathcal R|/m$. For WCS, $j\in\mathcal R$ requires $p_j\le\alpha S_j/m$, and pruning gives $S_j\le|\mathcal R|$ (deterministic) or $\xi S_j\le|\mathcal R|$ (homogeneous). For the last claim, WCS rejection requires first-stage membership, so $f_j\le p_j\le\alpha S_j/m\le\alpha$ because $S_j\le m$; for weighted BH, $f_j\le p_j\le\alpha|\mathcal R|/m\le\alpha$.
+\end{proof}
+Under the design, $\E[\sum_{i\in\calset}w(i)\mid\mathcal F,\testset_0]=|\mathcal N\setminus\testset_0|$, the number of non-test normals $N_{\rm ref}$, whatever the propensities. Since $f_j=1/\{1+\rho(j)\sum_{i\in\calset}w(i)\}$, using the mean Horvitz--Thompson calibration mass as a plug-in approximation gives $f_j\approx1/\{1+\rho(j)N_{\rm ref}\}$. This is an interpretive approximation, not a concentration claim: with very small propensities the weighted mass can vary substantially. Under it, for resolution it behaves like an unweighted conformal test with only $\rho(j)N_{\rm ref}$ calibration nodes, and Equation~\eqref{eq:crossing}'s bound $m/[\alpha(n+1)]$ reappears with $n=\rho(j)N_{\rm ref}$. When anomalies concentrate in a sparsely acquired stratum, this is the mechanism behind the loss of power. Randomization removes the deterministic floor. Conditional on everything except $U_j$,
+\[
+\Prb(\tilde p_j\le t)=\min\Bigl\{1,\max\Bigl\{0,\frac{t-b_j}{f_j}\Bigr\}\Bigr\},\qquad
+b_j=\frac{\sum_{i\in\calset}w(i)\ind\{s(i)>s(j)\}}{w(j)+\sum_{i\in\calset}w(i)},
+\]
+and for WCS the relevant threshold is $t=\alpha S_j/m$. Randomization can therefore permit rejection below the deterministic floor, although the rejection probability still depends on the calibration mass $b_j$ above $s(j)$.

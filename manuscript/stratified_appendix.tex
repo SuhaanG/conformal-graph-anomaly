@@ -1,0 +1,38 @@
+\section{STRATIFIED RANDOM-ROLE CALIBRATION}
+\label{app:stratified}
+\input{stratified_design.tex}
+\paragraph{Conditioning and construction.}
+Let $\mathcal F$ include the finite graph, its entire fixed label vector, the training panel, the deployment universe, fitted scores unchanged by normal-role reassignment, and every anomalous node's test/revelation assignment. It also includes independent continuous score tie marks and any auxiliary marks used to break exposure ties, drawn before normal-role assignment. The partition $D_1,\ldots,D_H$ is $\mathcal F$-measurable. This conditioning is a design-based analysis; the procedure does not observe hidden test labels.
+
+For example, the numerator of observed exposure counts anomalous neighbors known from the training and revealed non-test panels. Conditional on their assignments it is fixed; division by the graph's fixed degree preserves this property. Changing which normal neighbors are revealed contributes zero to the numerator. By contrast, dividing by the number of revealed neighbors, or choosing a threshold from just the realized normal reference, can make the partition depend on normal roles and requires another argument.
+
+\paragraph{Proof of Lemma~\ref{lem:stratified}.}
+Write $N$ for the number of deployment normals and $t$ for the prescribed normal-test count. For $0<\rho<1$, a particular normal-role partition into test nodes $T_0$, revealed reference nodes $C$, and unused nodes $U$ has probability
+\[
+\binom Nt^{-1}\rho^{|C|}(1-\rho)^{|U|}.
+\]
+This probability is constant over assignments having the same role counts in each fixed stratum. Thus, conditional on $\mathcal F$ and those counts, normal identities are exchangeable among the roles within each stratum. At $\rho=0$ or $1$, the same statement holds on the feasible assignments directly. Anomaly-side and normal-side sampling must have this conditional law; conditioning on an arbitrary coupled allocation would not establish it.
+
+Fix a stratum and additionally condition on the unordered set of normals occupying calibration and null-test roles. Assign them to calibration and null-test positions, introducing independent random orderings within each group. Every permutation into those positions is equally likely. Hence their score vector is jointly exchangeable conditional on the anomalous test scores. Auxiliary ordering does not alter any p-value attached to a node or the FDP. Lexicographic tie marks make every calibration and test score distinct; equivalently use ranks in this fixed total ordering. The score-level exchangeability result of \citet[Theorem 3.3]{marandon2024adaptive} supplies null super-uniformity and PRDS within this stratum. BH therefore gives
+\[
+\E[\FDP_h\mid\mathcal F,\mathcal K]
+\le\alpha_h m_{0h}/m_h,
+\]
+after averaging over the additional unordered-set conditioning, where $\mathcal K$ denotes all stratum role counts. Empty references abstain, and empty test strata have FDP zero.
+
+Let $R_h$ and $V_h$ be the discovery and false-discovery counts. For every realization,
+\[
+\frac{\sum_h V_h}{(\sum_h R_h)\vee1}
+\le\sum_h\frac{V_h}{R_h\vee1}.
+\]
+Taking conditional expectations proves Equation~\eqref{eq:stratified}. No independence or PRDS condition across strata is invoked. The strata and level allocation must be fixed under the stated conditioning; selecting them after inspecting FDP is not covered.
+
+\paragraph{Prespecified empirical comparison.}
+We use two separate binary partitions: zero versus positive observed exposure, and the lower 80\% versus upper 20\% of exposure ranks over the entire deployment universe. Independent continuous marks break exposure ties in the latter. Its cutoff is fixed under normal-role permutations, unlike a cutoff computed from only calibration normals. Neither partition is selected based on its results. Each stratum receives level $0.05$, including when another stratum is empty.
+
+For each graph, both frozen supervised scorers, all ten training seeds, five test splits, and revealed fractions $0.25,0.50,1$, we compare pooled full-reference BH at $0.10$, low-stratum calibration applied to the entire test set at $0.10$, and separate-stratum BH. Full-reference and stratified calibration use the same total acquired labels and reference nodes. The low-stratum diagnostic uses fewer references; the separate dose experiment supplies size-matched composition comparisons. We retain every result, including power losses and abstentions.
+
+\paragraph{Implementation checks.}
+Enumeration over 44,256 joint role assignments checks both the stratum-level BH bound and the union bound; 16,110 assignments have nonempty discoveries. Two hundred tied-score examples compare rank-based BH with a direct reference implementation. Empty references abstain. For each evaluated split and revelation fraction, altering unknown labels or normal revelation roles leaves exposure unchanged; both partition constructions are checked for the same invariance. The protocol, per-split outcomes, seed summaries and input hashes are included in the supplement.
+
+\input{stratified_results.tex}

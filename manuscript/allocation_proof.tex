@@ -1,0 +1,40 @@
+\section{ERROR ALLOCATION AND SELECTED LABEL ACQUISITION}
+\label{app:allocation}
+\paragraph{Stratum-size allocation.}
+In Lemma~\ref{lem:stratified}, the realized $m_h$ need not be fixed before normal roles are drawn. They are fixed after conditioning on the stratum role counts $\mathcal K$. Setting $\alpha_h=\alpha m_h/m$ therefore gives
+\[
+\E[\FDP_{\rm union}\mid\mathcal F,\mathcal K]
+\le \sum_{h:m_h>0}\frac{\alpha m_h}{m}\frac{m_{0h}}{m_h}
+=\alpha\frac{m_0}{m}.
+\]
+This is an allocation rule, not a power ordering relative to equal allocation.
+
+\paragraph{One BH across stratified ranks.}
+Suppose normal reference revelation has a fixed probability $\rho_h$ within each fixed stratum, independently across nodes. For a feasible assignment of normal identities to test, reference and unused roles, its probability conditional on $\mathcal F$ is
+\[
+\binom Nt^{-1}\prod_h\rho_h^{n_h}(1-\rho_h)^{u_h}.
+\]
+Given $\mathcal K$, this is constant over a Cartesian product of the feasible within-stratum assignments. Its normalizing constant factors over that product. Consequently the within-stratum role assignments are independent under this conditioning. This independence follows from randomized roles on the fixed graph, not from independence of graph observations. It would not hold automatically for an arbitrary adaptive acquisition policy.
+
+In each stratum, introduce independent random orderings of calibration and null-test positions as in the proof of Lemma~\ref{lem:stratified}. The conditional exchangeability theorem supplies super-uniform null ranks and PRDS within each block~\citep[Theorem 3.3]{marandon2024adaptive}. An empty-reference block has constant p-values equal to one. Independent PRDS blocks are jointly PRDS: for a null coordinate in block $h$ and any coordinatewise increasing set $A$, fix the other blocks. Its section in block $h$ is increasing, so its conditional probability is nondecreasing in that null p-value. Average over the independent other blocks; their law does not change with the conditioned coordinate. This preserves the monotonicity. Thus one BH at $\alpha$ on all stratum-wise p-values satisfies
+\[
+\E[\FDP_{\rm pooled\ strata}\mid\mathcal F,\mathcal K]
+\le\alpha m_0/m.
+\]
+The artificial ordering of positions changes neither the rejection set nor FDP. Averaging over counts preserves the bound. This result strengthens the allocation argument only for the specified product sampling design; the earlier sum-FDP argument remains applicable without cross-stratum independence.
+
+\paragraph{Known-propensity weighting.}
+For the biased-acquisition experiment, strata and probabilities are fixed using only training labels and graph features. Assign a prescribed total number of normal test positions uniformly, then acquire each remaining normal with probability $\rho(v)=\rho_{h(v)}>0$. Consider one designated null test position. Condition on all other null test identities, the unordered union $S$ of its node and calibration nodes, and the unused nodes; do not additionally fix this designated position's stratum. For a possible target $j\in S$, assignment probability is proportional to
+\[
+\prod_{i\in S\setminus\{j\}}\rho(i)
+=\frac{\prod_{i\in S}\rho(i)}{\rho(j)}.
+\]
+Uniform test-position assignment and the probabilities of unused nodes contribute common factors. Conditional target mass is therefore proportional to $w(j)=1/\rho(j)$. Summing this mass over nodes with score at least the target score yields
+\[
+p_w(v)=\frac{w(v)+\sum_{u\in C}w(u)\ind\{s(u)\ge s(v)\}}
+{w(v)+\sum_{u\in C}w(u)}.
+\]
+The cumulative-mass argument gives marginal null super-uniformity; an empty reference returns one. This is the weighted-exchangeability principle~\citep{tibshirani2019conformal} applied to the acquisition design. BY at $\alpha/\sum_{j=1}^m1/j$ consequently controls FDR under arbitrary p-value dependence~\citep{benjamini2001control}. Weighted BH is retained as a descriptive comparator: the marginal argument does not establish its joint PRDS condition. These probabilities are known by design, not estimated propensities for an arbitrary analyst policy.
+
+\input{allocation_full_figure.tex}
+\input{allocation_results.tex}
